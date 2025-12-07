@@ -15,8 +15,13 @@
 #define GPS_RX_GPIO            GPIO_NUM_16   
 #define GPS_TX_GPIO            GPIO_NUM_17
 
-// ADC Measurements
+// I2C Bus
+#define I2C_INSTANCE I2C_NUM_0
+#define I2C_SDA      GPIO_NUM_21
+#define I2C_SCL      GPIO_NUM_22
+#define I2C_FREQ_HZ  100000   // Fast mode
 
+// ADC Measurements
 #define VBAT_ADC_PIN GPIO_NUM_32
  
 #define TRANSMIT_ENABLE_GPIO   GPIO_NUM_15   // Enable WIFI data transmission push button pin

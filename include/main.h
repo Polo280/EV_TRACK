@@ -13,6 +13,7 @@
 #include "PeriphConfig.h"
 #include "Globals.h"
 #include "MT3333_GPS.h"
+#include "SD_memory.h"
 
 // CONTROL MACROS
 #define ADC_AVG_NUM_SAMPLES 8

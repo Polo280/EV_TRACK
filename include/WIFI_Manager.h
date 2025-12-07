@@ -17,9 +17,34 @@ extern const bool allow_to_reconnect;
 extern char ip_address[20];
 /////////////////////////////////
 
+/**
+ * @brief Initialize the Non-Volatile Storage (NVS) partition.
+ * This function initializes the NVS flash partition required for storing 
+ * key-value pairs in flash. If the initialization fails due to no free 
+ * pages or because a new version of NVS is detected, it erases the NVS 
+ * partition and retries initialization.
+ * 
+ * @note This function uses ESP-IDF NVS APIs and will abort the program 
+ *       if an unrecoverable error occurs (via ESP_ERROR_CHECK).
+ *
+ * @return None
+ */
 void NVS_Init(void);
+
+
+/**
+ * @brief Wi-Fi event handler callback.
+ * @return None 
+*/
 void WIFI_Event_Handler(void *event_handler_arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+
+
 esp_err_t _http_event_handler(esp_http_client_event_t *evt);
+
+
 void post_data(void *);
+
+/**
+ * @brief Connects the ESP to a WiFi network with a given SSID and password
+ */
 void WIFI_Connect(void *pvParameter);
-void wifi_init_enterprise(void *pvParameter);

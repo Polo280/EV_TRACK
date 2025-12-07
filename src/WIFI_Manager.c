@@ -2,11 +2,11 @@
 #include <stdlib.h>
 
 //////// WIFI Settings //////// 
-// const char *ssid = "55 HOME";
-// const char *pass = "bienvenidos55";
+const char *ssid = "55 HOME";
+const char *pass = "bienvenidos55";
 
-const char *ssid = "CASAGUERO";
-const char *pass = "AMADALC1212";
+// const char *ssid = "POCO";
+// const char *pass = "12345678";
 
 const bool allow_to_reconnect = true;
 bool wifi_connected_flag = false;
@@ -66,7 +66,7 @@ void WIFI_Connect(void *pvParameter){
     wifi_init_config_t wifi_initiation = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&wifi_initiation);
 
-    // Event handlers 
+    // Register event handler for WiFi
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, WIFI_Event_Handler, NULL);
     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, WIFI_Event_Handler, NULL);
 
@@ -84,7 +84,7 @@ void WIFI_Connect(void *pvParameter){
     // Start  configured WiFi and connect 
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_start();
-    esp_wifi_connect();
+    esp_wifi_connect();  // Will trigger event handler
 
     // Block this task to avoid returning since this triggers RTOS error
     vTaskDelete(NULL);
@@ -120,7 +120,7 @@ void post_data(void *pvParameter) {
             generate_random_telemetry(data);
 
             esp_http_client_config_t config = {
-                .url = "http://274db8d0d3ce.ngrok-free.app/api/lectures" ,
+                .url = "https://3334b6efc43c.ngrok-free.app/api/lectures" ,
             };
 
             esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -144,78 +144,3 @@ void post_data(void *pvParameter) {
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
-
-// CONNECTION TEC
-
-static void wifi_event_handler(void *arg, esp_event_base_t event_base,
-                               int32_t event_id, void *event_data)
-{
-    if (event_base == WIFI_EVENT) {
-        switch (event_id) {
-            case WIFI_EVENT_STA_START:
-                ESP_LOGI("WIFI", "WIFI started, connecting...");
-                esp_wifi_connect();
-                break;
-
-            case WIFI_EVENT_STA_CONNECTED:
-                ESP_LOGI("WIFI", "Connected to WPA2 Enterprise network");
-                break;
-
-            case WIFI_EVENT_STA_DISCONNECTED:
-                ESP_LOGW("WIFI", "Disconnected. Reconnecting...");
-                wifi_connected_flag = false;
-                esp_wifi_connect();  // Optional: auto-reconnect
-                break;
-
-            default:
-                ESP_LOGW("WIFI", "Unhandled event id: %ld", event_id);
-                break;
-        }
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
-        esp_netif_ip_info_t ip_info = event->ip_info;
-
-        snprintf(ip_address, sizeof(ip_address), IPSTR, IP2STR(&ip_info.ip));
-        wifi_connected_flag = true;
-
-        ESP_LOGI("WIFI", "Got IP: %s", ip_address);
-    }
-}
-
-
-void wifi_init_enterprise(void *pvParameter) {
-    esp_netif_init();
-    esp_event_loop_create_default();
-    esp_netif_create_default_wifi_sta();
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&cfg);
-    esp_wifi_set_mode(WIFI_MODE_STA);
-
-    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL, NULL);
-    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL, NULL);
-
-
-    wifi_config_t wifi_config = { 0 };
-    strncpy((char *)wifi_config.sta.ssid, "Tec", sizeof(wifi_config.sta.ssid));
-    esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
-
-    // WPA2 Enterprise configuration
-    esp_wifi_sta_wpa2_ent_enable();  // Enable WPA2 Enterprise
-    esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)"A00344893", strlen("A00344893"));
-    esp_wifi_sta_wpa2_ent_set_username((uint8_t *)"A00344893", strlen("A00344893"));
-    esp_wifi_sta_wpa2_ent_set_password((uint8_t *)"", strlen(""));
-
-    esp_wifi_start();
-    esp_wifi_connect();
-
-    while (!wifi_connected_flag) {
-        ESP_LOGI("WIFI", "Waiting for IP...");
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-
-    // Block this task to avoid returning s ince this triggers RTOS error
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}

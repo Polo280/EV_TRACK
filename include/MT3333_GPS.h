@@ -20,6 +20,24 @@ extern char NMEA_rx_buff[256];
 // Auxiliar buffer 
 extern char aux_buff[128];
 
+// GPS output update rates
+enum gps_update_rate {
+    GPS_UPDATE_1HZ,
+    GPS_UPDATE_5HZ,
+    GPS_UPDATE_10HZ
+};
+
+// GPS Baud Rates
+enum gps_baud_rates {
+    GPS_BAUD_RATE_4800,
+    GPS_BAUD_RATE_9600,
+    GPS_BAUD_RATE_14400,
+    GPS_BAUD_RATE_19200,
+    GPS_BAUD_RATE_38400,
+    GPS_BAUD_RATE_57600,
+    GPS_BAUD_RATE_115200
+};
+
 // NMEA sentence indexes
 enum nmea_sentence_index {
     NMEA_SEN_GLL,
@@ -69,6 +87,7 @@ void GPS_Init(int);
 void set_UART_Instance(int);
 void send_GPS_Command(void);
 
+int set_GPS_Baud_Rate(uint8_t);
 int set_GPS_Update_Rate(uint8_t);
 int set_GPS_Standby(void);
 int set_Satellite_System(uint8_t);

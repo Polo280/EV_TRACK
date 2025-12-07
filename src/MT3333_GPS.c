@@ -28,8 +28,12 @@ NMEA_config_struct NMEA_cfg = {
  */
 void GPS_Init(int uart_num){
     set_UART_Instance(uart_num);
+    // Set the GPS update rate 
+    set_GPS_Update_Rate(GPS_UPDATE_1HZ);
     // Start with default frequency values
     set_Output_Frequency(NMEA_SEN_NONE, OUTPUT_DISABLED);
+    // Set baud rate (test)
+    set_GPS_Baud_Rate(GPS_BAUD_RATE_9600);
 }
 
 
@@ -66,17 +70,84 @@ int set_GPS_Update_Rate(uint8_t rate_index){
     bool send_command = true; 
     switch (rate_index)
     {
-    case 0:
+    case GPS_UPDATE_1HZ:
         // 1 Hz Updates
-        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK220,1000*1F\r\n");
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK220,1000");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
         break;
-    case 1:
+    case GPS_UPDATE_5HZ:
         // 5 Hz Updates
-        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK220,200*2C\r\n");
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK220,200");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
         break;
-    case 2:
+    case GPS_UPDATE_10HZ:
         // 10 Hz Updates
-        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK220,100*2F\r\n");
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK220,100");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
+        break;
+    default:
+        send_command = false;
+        break;
+    }
+
+    // Validate command 
+    if(!send_command){
+        return COMMAND_ERROR;
+    }
+
+    send_GPS_Command();
+    return COMMAND_OK;
+}
+
+/**
+ * @brief Select baud rate for GPS communication
+ * 
+ * @param rate_index: Baud Rate Index (GPS baud rate enum values)
+ * 
+ * @return COMMAND_OK if a valid baud rate was selected, COMMAND_ERROR if not
+ * 
+ */
+int set_GPS_Baud_Rate(uint8_t rate_index){
+    bool send_command = true;
+    switch (rate_index)
+    {
+    case GPS_BAUD_RATE_4800:
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK251,4800");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
+        break;
+    case GPS_BAUD_RATE_9600:
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK251,9600");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
+        break;
+    case GPS_BAUD_RATE_14400:
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK251,14400");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
+        break;
+    case GPS_BAUD_RATE_19200:
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK251,19200");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
+        break;
+    case GPS_BAUD_RATE_38400:
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK251,38400");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
+        break;
+    case GPS_BAUD_RATE_57600:
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK251,57600");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
+        break;
+    case GPS_BAUD_RATE_115200:
+        snprintf(PMTK_command_buff, sizeof(PMTK_command_buff), "PMTK251,115200");
+        generate_nmea_sentence(PMTK_command_buff, aux_buff, sizeof(aux_buff));
+        strcpy(PMTK_command_buff, aux_buff);
         break;
     default:
         send_command = false;
