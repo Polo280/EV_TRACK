@@ -5,18 +5,24 @@
 #include <stdio.h>
 #include "esp_log.h"
 #include "esp_err.h"
+#include "Globals.h"
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define PIN_NUM_MISO  GPIO_NUM_19
-#define PIN_NUM_MOSI  GPIO_NUM_23
-#define PIN_NUM_CLK   GPIO_NUM_18
-#define PIN_NUM_CS    GPIO_NUM_5
+extern sdmmc_card_t *card;
 
-esp_err_t init_sdcard(void);
+esp_err_t mount_sdcard(void);
+esp_err_t unmount_sdcard(void);
 esp_err_t sd_append_line(const char *path, const char *text);
+esp_err_t sd_write_csv_header(const char *path);
+esp_err_t sd_append_telemetry_csv(const char *path, const TelemetryData *data);
+
+// RTOS tasks
+void SD_monitor_task(void *);
+void SD_append_data_task(void *);
 
 #ifdef __cplusplus
 }

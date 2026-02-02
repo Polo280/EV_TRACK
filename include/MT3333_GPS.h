@@ -6,6 +6,8 @@
 #include <stdbool.h>
 #include <string.h>
 #include "driver/uart.h"
+#include "esp_log.h"
+#include "Globals.h"
 
 // Return options for PMTK commands
 #define COMMAND_OK     0
@@ -98,6 +100,11 @@ int get_GPS_Update_Rate(void);
 int get_UTC_Time(void);
 
 void generate_nmea_sentence(const char *payload, char *output, size_t output_size);
+void GPS_parse_task(void *arg);
+
+void GPS_uart_debug_read_and_print(void);
+void GPS_debug_task(void *arg);
+
 
 //////////////////////////////////////
 

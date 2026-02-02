@@ -1,453 +1,512 @@
-// ESP-IDF translation of your BNO055 HAL code
 #include "BNO055.h"
 
 #include "driver/i2c.h"
-#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-// ---------- Config ----------
-#ifndef BNO055_I2C_ADDR_LO
-// Define if not defined by your header. ESP-IDF APIs expect 7-bit addr.
-#define BNO055_I2C_ADDR_LO  (0x28)   // ADR low (0x28) / high (0x29)
-#endif
+#include <stdint.h>
 
-static const char *TAG = "BNO055";
+/* --------------------------------------------------------- */
+/* BNO055 definitions                                       */
+/* --------------------------------------------------------- */
 
-static i2c_port_t s_i2c_port = I2C_NUM_0;
+#define BNO055_I2C_ADDR          0x29
 
-bno055_conf_t default_bno055_config = {
-    .pwr_mode = POWER_MODE_NORMAL,
-    .op_mode = OPERATION_MODE_NDOF,
-    .axis_remap_conf = AXIS_REMAP_CONFIG_P0,
-    .axis_remap_sign = AXIS_REMAP_SIGN_P0,
-    .acc_g_range = ACC_CONFIG_4G,
-    .acc_bandwidth = ACC_CONFIG_62_5Hz,
-    .acc_operation_mode = ACC_CONFIG_NORMAL,
-    .gyr_range = GYR_CONFIG_250DPS,
-    .gyr_bandwidth = GYR_CONFIG_116Hz,
-    .gyr_op_mode = GYR_CONFIG_NORMAL,
-    .mag_data_rate = MAG_CONFIG_10Hz,
-    .mag_op_mode = MAG_CONFIG_REGULAR,
-    .mag_pwr_mode = MAG_CONFIG_NORMAL,
-    .unit_sel = ACCELERATION_M_S2 | ANGULAR_RATE_DPS | EULER_ANGLES_DEG | TEMPERATURE_C
-};
+#define BNO055_PAGE_ID   0x07
 
-bno055_verification_t default_bno055_verification = {
-    .chip_id = 0,
-    .sw_rev_id = 0,
-    .page_id = 0,
-    .acc_id = 0,
-    .mag_id = 0,
-    .gyr_id = 0,
-    .bl_rev_id = 0
-};
+#define BNO055_CHIP_ID           0x00
+#define BNO055_OPR_MODE          0x3D
+#define BNO055_PWR_MODE          0x3E
+#define BNO055_SYS_TRIGGER       0x3F
+#define BNO055_UNIT_SEL          0x3B
 
-// ---------- Port selector ----------
-void bno055_set_i2c_handler(i2c_port_t port) {
-    s_i2c_port = port;
+#define BNO055_EULER_H_LSB       0x1A
+#define BNO055_LIA_DATA_X_LSB    0x28
+
+#define BNO055_CHIP_ID_VAL       0xA0
+
+#define BNO055_TEMP                0x34
+#define BNO055_CALIB_STAT          0x35
+
+/* Operation modes */
+#define BNO055_MODE_CONFIG       0x00
+#define BNO055_MODE_NDOF         0x0C
+
+#define BNO055_SYS_STATUS  0x39
+#define BNO055_SYS_ERR     0x3A
+
+int fail_count = 0;
+
+
+static bool bno055_write_reg(uint8_t reg, uint8_t data)
+{
+    xSemaphoreTake(i2c_mutex, portMAX_DELAY);
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd,
+                           (BNO055_I2C_ADDR << 1) | I2C_MASTER_WRITE,
+                           true);
+    i2c_master_write_byte(cmd, reg,  true);
+    i2c_master_write_byte(cmd, data, true);
+    i2c_master_stop(cmd);
+
+    esp_err_t ret = i2c_master_cmd_begin(I2C_INSTANCE,
+                                         cmd,
+                                         pdMS_TO_TICKS(200));
+
+    i2c_cmd_link_delete(cmd);
+    xSemaphoreGive(i2c_mutex);
+
+    return (ret == ESP_OK);
 }
 
-// ---------- Utility ----------
-static inline TickType_t _to_ticks(uint32_t timeout_ms) {
-    return (timeout_ms == 0) ? 0 : pdMS_TO_TICKS(timeout_ms);
-}
 
-// ---------- ESP-IDF I2C wrappers  ----------
-uint8_t bno055_writeData_len(const uint8_t *txdata, size_t len, uint32_t timeout_ms) {
-    if (!txdata || len == 0) return 1;
+static bool bno055_read_reg(uint8_t reg, uint8_t *data, size_t len)
+{
+    bool ok;
 
-    esp_err_t err = i2c_master_write_to_device(
-        s_i2c_port,
-        BNO055_I2C_ADDR_LO,      // 7-bit address, no shifting
-        txdata,
-        len,
-        _to_ticks(timeout_ms)
-    );
+    xSemaphoreTake(i2c_mutex, portMAX_DELAY);
 
-    if (err == ESP_OK) return 0;
+    /* write register address */
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd,
+        (BNO055_I2C_ADDR << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(cmd, reg, true);
+    i2c_master_stop(cmd);
 
-    ESP_LOGE(TAG, "i2c_master_write_to_device err=%d (%s)", err, esp_err_to_name(err));
-    return 1;
-}
+    ok = (i2c_master_cmd_begin(I2C_INSTANCE, cmd,
+                               pdMS_TO_TICKS(400)) == ESP_OK);
 
-// Backward-compatible wrapper with default timeout = 10ms and "2-byte register write" expectation
-uint8_t bno055_writeData(uint8_t *txdata) {
-    return bno055_writeData_len(txdata, 2, 10);
-}
+    i2c_cmd_link_delete(cmd);
 
-uint8_t bno055_readData(uint8_t reg, uint8_t *data, uint8_t len) {
-    if (!data || len == 0) return 1;
-
-    esp_err_t err = i2c_master_write_read_device(
-        s_i2c_port,
-        BNO055_I2C_ADDR_LO,
-        &reg,
-        1,
-        data,
-        len,
-        _to_ticks(20)    // small combined timeout
-    );
-
-    if (err == ESP_OK) {
-        return 0;
-    } else {
-        ESP_LOGE(TAG, "i2c_master_write_read_device err=%d (%s), reg=0x%02X len=%u",
-                 err, esp_err_to_name(err), reg, (unsigned)len);
-        return 1;
+    if (!ok) {
+        xSemaphoreGive(i2c_mutex);
+        return false;
     }
+
+    /* small delay like your STM code */
+    vTaskDelay(pdMS_TO_TICKS(2));
+
+    /* now read */
+    cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd,
+        (BNO055_I2C_ADDR << 1) | I2C_MASTER_READ, true);
+
+    if (len > 1)
+        i2c_master_read(cmd, data, len - 1, I2C_MASTER_ACK);
+
+    i2c_master_read_byte(cmd, data + len - 1, I2C_MASTER_NACK);
+    i2c_master_stop(cmd);
+
+    ok = (i2c_master_cmd_begin(I2C_INSTANCE, cmd,
+                               pdMS_TO_TICKS(400)) == ESP_OK);
+
+    i2c_cmd_link_delete(cmd);
+    xSemaphoreGive(i2c_mutex);
+
+    return ok;
 }
 
-void bno055_delay(uint32_t ms) {
-    // Works from tasks. If you need it before scheduler starts, use ets_delay_us(ms*1000).
-    vTaskDelay(pdMS_TO_TICKS(ms));
+
+static bool bno055_write_retry(uint8_t reg, uint8_t val)
+{
+    for (int i = 0; i < 5; i++)
+    {
+        if (bno055_write_reg(reg, val))
+            return true;
+
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    return false;
 }
 
 
-BNO055_FUNC_RETURN bno055_init(bno055_conf_t *bno055_conf, bno055_verification_t *bno055_verification){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
+static bool bno055_read_retry(uint8_t reg, uint8_t *val)
+{
+    for (int i = 0; i < 5; i++)
+    {
+        if (bno055_read_reg(reg, val, 1))
+            return true;
 
-    uint8_t conf_page0 [2] = {BNO055_PAGE_ID, 0x00};
-    uint8_t op_mode_conf [2] = {BNO055_OPR_MODE, OPERATION_MODE_CONFIG};
-
-    ret += bno055_writeData_len(conf_page0, sizeof(conf_page0), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(op_mode_conf, sizeof(op_mode_conf), 10);
-    bno055_delay(550);
-
-    uint8_t conf_page1 [2] = {BNO055_PAGE_ID, 0x01};
-    uint8_t acc_conf  [2] = {BNO055_ACC_CONFIG,    (uint8_t)((bno055_conf->acc_operation_mode << 5) | (bno055_conf->acc_bandwidth << 2) | bno055_conf->acc_g_range)};
-    uint8_t gyr_conf0 [2] = {BNO055_GYRO_CONFIG_0, (uint8_t)((bno055_conf->gyr_bandwidth << 3) | bno055_conf->gyr_range)};
-    uint8_t gyr_conf1 [2] = {BNO055_GYRO_CONFIG_1, bno055_conf->gyr_op_mode};
-    uint8_t mag_conf  [2] = {BNO055_MAG_CONFIG,    (uint8_t)((bno055_conf->mag_pwr_mode << 5) | (bno055_conf->mag_op_mode << 3) | bno055_conf->mag_data_rate)};
-
-    ret += bno055_writeData_len(conf_page1, sizeof(conf_page1), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(acc_conf,  sizeof(acc_conf), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(gyr_conf0, sizeof(gyr_conf0), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(gyr_conf1, sizeof(gyr_conf1), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(mag_conf,  sizeof(mag_conf), 10);
-    bno055_delay(10);
-
-    uint8_t pwr_mode        [2] = {BNO055_PWR_MODE,       bno055_conf->pwr_mode};
-    uint8_t op_mode         [2] = {BNO055_OPR_MODE,       bno055_conf->op_mode};
-    uint8_t axis_remap_conf [2] = {BNO055_AXIS_MAP_CONFIG,bno055_conf->axis_remap_conf};
-    uint8_t axis_remap_sign [2] = {BNO055_AXIS_MAP_SIGN,  bno055_conf->axis_remap_sign};
-    uint8_t unit_sel        [2] = {BNO055_UNIT_SEL,       bno055_conf->unit_sel};
-
-    ret += bno055_writeData_len(conf_page0, sizeof(conf_page0), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(pwr_mode, sizeof(pwr_mode), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(axis_remap_conf, sizeof(axis_remap_conf), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(axis_remap_sign, sizeof(axis_remap_sign), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(unit_sel, sizeof(unit_sel), 10);
-    bno055_delay(10);
-
-    ret += bno055_writeData_len(op_mode, sizeof(op_mode), 10);
-    bno055_delay(10);
-
-    uint8_t sw_id[2] = {0, 0};
-    uint8_t data = 0;
-
-    ret += bno055_readData(BNO055_CHIP_ID, &data, 1);
-    bno055_verification->chip_id = data;
-    bno055_delay(10);
-
-    ret += bno055_readData(BNO055_ACC_ID, &data, 1);
-    bno055_verification->acc_id = data;
-    bno055_delay(10);
-
-    ret += bno055_readData(BNO055_MAG_ID, &data, 1);
-    bno055_verification->mag_id = data;
-    bno055_delay(10);
-
-    ret += bno055_readData(BNO055_GYR_ID, &data, 1);
-    bno055_verification->gyr_id = data;
-    bno055_delay(10);
-
-    ret += bno055_readData(BNO055_BL_REV_ID, &data, 1);
-    bno055_verification->bl_rev_id = data;
-    bno055_delay(10);
-
-    ret += bno055_readData(BNO055_SW_REV_ID_LSB, sw_id, 2);
-    bno055_verification->sw_rev_id = (uint16_t)((sw_id[1] << 8)|(sw_id[0]));
-    bno055_delay(10);
-
-    ret += bno055_readData(BNO055_PAGE_ID, &data, 1);
-    bno055_verification->page_id = data;
-    bno055_delay(100);
-
-    return ret;
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    return false;
 }
 
-// --- The rest of your read helpers stay the same, calling bno055_readData() ---
-// I’ll keep your original logic, just using ESP-IDF I2C under the hood.
 
-BNO055_FUNC_RETURN bno055_read_acc_x(uint16_t* acc_x){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_ACC_DATA_X_LSB, data, 2);
-    *acc_x = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_acc_y(uint16_t* acc_y){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_ACC_DATA_Y_LSB, data, 2);
-    *acc_y = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_acc_z(uint16_t* acc_z){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_ACC_DATA_Z_LSB, data, 2);
-    *acc_z = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_acc_xyz(bno055_acc_t* acc_xyz){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[6] = {0,0,0,0,0,0};
-    ret += bno055_readData(BNO055_ACC_DATA_X_LSB, data, 6);
-    int16_t rawX = (int16_t)((data[1] << 8) | data[0]);
-    int16_t rawY = (int16_t)((data[3] << 8) | data[2]);
-    int16_t rawZ = (int16_t)((data[5] << 8) | data[4]);
-    const float accScale = 1.0f / 100.0f;
-    acc_xyz->x = rawX * accScale;
-    acc_xyz->y = rawY * accScale;
-    acc_xyz->z = rawZ * accScale;
-    return ret;
+static bool bno055_force_page0(void)
+{
+    return bno055_write_retry(0x07, 0x00);   // PAGE_ID
 }
 
-BNO055_FUNC_RETURN bno055_read_mag_x(uint16_t* mag_x){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_MAG_DATA_X_LSB, data, 2);
-    *mag_x = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_mag_y(uint16_t* mag_y){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_MAG_DATA_Y_LSB, data, 2);
-    *mag_y = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_mag_z(uint16_t* mag_z){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_MAG_DATA_Z_LSB, data, 2);
-    *mag_z = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_mag_xyz(bno055_mag_t* mag_xyz){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[6] = {0,0,0,0,0,0};
-    ret += bno055_readData(BNO055_MAG_DATA_X_LSB, data, 6);
-    mag_xyz->x = (float)(uint16_t)((data[1] << 8)|(data[0]));
-    mag_xyz->y = (float)(uint16_t)((data[3] << 8)|(data[2]));
-    mag_xyz->z = (float)(uint16_t)((data[5] << 8)|(data[4]));
-    return ret;
+
+static bool bno055_read_system_status(uint8_t *stat, uint8_t *err)
+{
+    if (!bno055_force_page0())
+        return false;
+
+    if (!bno055_read_reg(BNO055_SYS_STATUS, stat, 1))
+        return false;
+
+    if (!bno055_read_reg(BNO055_SYS_ERR, err, 1))
+        return false;
+
+    return true;
 }
 
-BNO055_FUNC_RETURN bno055_read_gyr_x(uint16_t* gyr_x){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_GYR_DATA_X_LSB, data, 2);
-    *gyr_x = (uint16_t)((data[1] << 8)|(data[0])); // note: your original had "+=", likely unintended
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_gyr_y(uint16_t* gyr_y){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_GYR_DATA_Y_LSB, data, 2);
-    *gyr_y = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_gyr_z(uint16_t* gyr_z){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_GYR_DATA_Z_LSB, data, 2);
-    *gyr_z = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_gyr_xyz(bno055_gyr_t* gyr_xyz){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[6] = {0,0,0,0,0,0};
-    ret += bno055_readData(BNO055_GYR_DATA_X_LSB, data, 6);
-    gyr_xyz->x = (float)(uint16_t)((data[1] << 8)|(data[0]));
-    gyr_xyz->y = (float)(uint16_t)((data[3] << 8)|(data[2]));
-    gyr_xyz->z = (float)(uint16_t)((data[5] << 8)|(data[4]));
-    return ret;
+
+static bool bno055_soft_reset(void)
+{
+    /* must be on page 0 */
+    if (!bno055_force_page0())
+        return false;
+
+    /* go to config mode before reset */
+    bno055_write_retry(BNO055_OPR_MODE, BNO055_MODE_CONFIG);
+    vTaskDelay(pdMS_TO_TICKS(30));
+
+    /* trigger reset */
+    if (!bno055_write_retry(BNO055_SYS_TRIGGER, 0x20))
+        return false;
+
+    /* datasheet: reset takes up to 650 ms */
+    vTaskDelay(pdMS_TO_TICKS(700));
+
+    return true;
 }
 
-BNO055_FUNC_RETURN bno055_read_euler_h(uint16_t* euler_h){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_EUL_HEADING_LSB, data, 2);
-    *euler_h = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_euler_r(uint16_t* euler_r){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_EUL_ROLL_LSB, data, 2);
-    *euler_r = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_euler_p(uint16_t* euler_p){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_EUL_PITCH_LSB, data, 2);
-    *euler_p = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_euler_hrp(bno055_euler_t* euler_hrp){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[6] = {0,0,0,0,0,0};
-    ret += bno055_readData(BNO055_EUL_HEADING_LSB, data, 6);
-    int16_t rawHeading = (int16_t)((data[1] << 8) | data[0]);
-    int16_t rawRoll    = (int16_t)((data[3] << 8) | data[2]);
-    int16_t rawPitch   = (int16_t)((data[5] << 8) | data[4]);
-    float scaleFactor = 1.0f / 16.0f;
-    euler_hrp->h = rawHeading * scaleFactor;
-    euler_hrp->r = rawRoll * scaleFactor;
-    euler_hrp->p = rawPitch * scaleFactor;
-    return ret;
+
+
+/* --------------------------------------------------------- */
+
+bool bno055_init(void)
+{
+    uint8_t id = 0;
+
+    vTaskDelay(pdMS_TO_TICKS(700));
+
+    for (int i = 0; i < 10; i++)
+    {
+        if (bno055_read_retry(BNO055_CHIP_ID, &id) &&
+            id == BNO055_CHIP_ID_VAL)
+            break;
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    if (id != BNO055_CHIP_ID_VAL)
+        return false;
+
+    if (!bno055_write_retry(BNO055_PAGE_ID, 0x00))
+        return false;
+
+    if (!bno055_write_retry(BNO055_OPR_MODE, BNO055_MODE_CONFIG))
+        return false;
+    vTaskDelay(pdMS_TO_TICKS(30));
+
+    if (!bno055_write_retry(BNO055_PWR_MODE, 0x00))
+        return false;
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    if (!bno055_write_retry(BNO055_UNIT_SEL, 0x00))
+        return false;
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    if (!bno055_write_retry(BNO055_SYS_TRIGGER, 0x00))
+        return false;
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    if (!bno055_write_retry(BNO055_OPR_MODE, BNO055_MODE_NDOF))
+        return false;
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+
+    /* wait for fusion engine to start */
+    uint8_t sys, g, a, m;
+
+    for (int i = 0; i < 50; i++)   // up to ~1 second
+    {
+        if (bno055_get_calib_status(&sys, &g, &a, &m))
+        {
+            if (sys != 0)   // fusion running
+                break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    return true;
 }
 
-BNO055_FUNC_RETURN bno055_read_quaternion_w(uint16_t* quaternion_w){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_QUA_DATA_W_LSB, data, 2);
-    *quaternion_w = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_quaternion_x(uint16_t* quaternion_x){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_QUA_DATA_X_LSB, data, 2);
-    *quaternion_x = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_quaternion_y(uint16_t* quaternion_y){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_QUA_DATA_Y_LSB, data, 2);
-    *quaternion_y = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_quaternion_z(uint16_t* quaternion_z){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_QUA_DATA_Z_LSB, data, 2);
-    *quaternion_z = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_quaternion_wxyz(bno055_quaternion_t* quaternion_wxyz){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[8] = {0,0,0,0,0,0,0,0};
-    ret += bno055_readData(BNO055_QUA_DATA_W_LSB, data, 8);
-    quaternion_wxyz->w = (float)(uint16_t)((data[1] << 8)|(data[0]));
-    quaternion_wxyz->x = (float)(uint16_t)((data[3] << 8)|(data[2]));
-    quaternion_wxyz->y = (float)(uint16_t)((data[5] << 8)|(data[4]));
-    quaternion_wxyz->z = (float)(uint16_t)((data[7] << 8)|(data[6]));
-    return ret;
+
+/* --------------------------------------------------------- */
+
+bool bno055_read_euler(float *heading_deg,
+                        float *roll_deg,
+                        float *pitch_deg)
+{
+    uint8_t buf[6];
+
+    if (!bno055_force_page0())
+        return false;
+
+    if (!bno055_read_reg(BNO055_EULER_H_LSB, buf, 6))
+        return false;
+
+    int16_t h = (int16_t)((buf[1] << 8) | buf[0]);
+    int16_t r = (int16_t)((buf[3] << 8) | buf[2]);
+    int16_t p = (int16_t)((buf[5] << 8) | buf[4]);
+
+    /* 1 LSB = 1/16 degree */
+    *heading_deg = (float)h / 16.0f;
+    *roll_deg    = (float)r / 16.0f;
+    *pitch_deg   = (float)p / 16.0f;
+
+    return true;
 }
 
-BNO055_FUNC_RETURN bno055_read_linear_acc_x(uint16_t* linear_acc_x){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_LIA_DATA_X_LSB, data, 2);
-    *linear_acc_x = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_linear_acc_y(uint16_t* linear_acc_y){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_LIA_DATA_Y_LSB, data, 2);
-    *linear_acc_y = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_linear_acc_z(uint16_t* linear_acc_z){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_LIA_DATA_Z_LSB, data, 2);
-    *linear_acc_z = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_linear_acc_xyz(bno055_linear_acc_t* linear_acc_xyz){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[6] = {0,0,0,0,0,0};
-    ret += bno055_readData(BNO055_LIA_DATA_X_LSB, data, 6);
-    linear_acc_xyz->x = (float)(uint16_t)((data[1] << 8)|(data[0]));
-    linear_acc_xyz->y = (float)(uint16_t)((data[3] << 8)|(data[2]));
-    linear_acc_xyz->z = (float)(uint16_t)((data[5] << 8)|(data[4]));
-    return ret;
+/* --------------------------------------------------------- */
+
+bool bno055_read_linear_accel(float *ax,
+                               float *ay,
+                               float *az)
+{
+    uint8_t buf[6];
+
+    if (!bno055_force_page0())
+        return false;
+
+    if (!bno055_read_reg(BNO055_LIA_DATA_X_LSB, buf, 6))
+        return false;
+
+    int16_t x = (int16_t)((buf[1] << 8) | buf[0]);
+    int16_t y = (int16_t)((buf[3] << 8) | buf[2]);
+    int16_t z = (int16_t)((buf[5] << 8) | buf[4]);
+
+    /*
+     * Linear acceleration scale:
+     * 1 LSB = 1 mg = 0.01 m/s^2   (per datasheet default units)
+     */
+    const float LSB_TO_MS2 = 0.00980665f;
+
+    *ax = (float)x * LSB_TO_MS2;
+    *ay = (float)y * LSB_TO_MS2;
+    *az = (float)z * LSB_TO_MS2;
+
+    return true;
 }
 
-BNO055_FUNC_RETURN bno055_read_gravity_x(uint16_t* gravity_x){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_GRV_DATA_X_LSB, data, 2);
-    *gravity_x = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_gravity_y(uint16_t* gravity_y){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_GRV_DATA_Y_LSB, data, 2);
-    *gravity_y = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_gravity_z(uint16_t* gravity_z){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[2] = {0,0};
-    ret += bno055_readData(BNO055_GRV_DATA_Z_LSB, data, 2);
-    *gravity_z = (uint16_t)((data[1] << 8)|(data[0]));
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_read_gravity_xyz(bno055_gravity_t* gravity_xyz){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data[6] = {0,0,0,0,0,0};
-    ret += bno055_readData(BNO055_GRV_DATA_X_LSB, data, 6);
-    gravity_xyz->x = (float)(uint16_t)((data[1] << 8)|(data[0]));
-    gravity_xyz->y = (float)(uint16_t)((data[3] << 8)|(data[2]));
-    gravity_xyz->z = (float)(uint16_t)((data[5] << 8)|(data[4]));
-    return ret;
+
+bool bno055_get_calib_status(uint8_t *sys,
+                             uint8_t *gyro,
+                             uint8_t *accel,
+                             uint8_t *mag)
+{
+    uint8_t cal;
+
+    if (!bno055_force_page0())
+        return false;
+
+    if (!bno055_read_reg(BNO055_CALIB_STAT, &cal, 1))
+        return false;
+
+    /*
+     * Bits:
+     * [7:6] = SYS
+     * [5:4] = GYR
+     * [3:2] = ACC
+     * [1:0] = MAG
+     *
+     * Each value: 0..3
+     */
+
+    if (sys)   *sys   = (cal >> 6) & 0x03;
+    if (gyro)  *gyro  = (cal >> 4) & 0x03;
+    if (accel) *accel = (cal >> 2) & 0x03;
+    if (mag)   *mag   =  cal       & 0x03;
+
+    return true;
 }
 
-BNO055_FUNC_RETURN bno055_read_temperature(int8_t* temp){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    uint8_t data = 0;
-    ret += bno055_readData(BNO055_TEMP, &data, 1);
-    *temp = (int8_t)data;
-    return ret;
+
+bool bno055_read_temperature(float *temp_c)
+{
+    int8_t t;
+
+    if (!bno055_force_page0())
+        return false;
+
+    if (!bno055_read_reg(BNO055_TEMP, (uint8_t *)&t, 1))
+        return false;
+
+    /*
+     * Datasheet:
+     * 1 LSB = 1 °C
+     * signed value
+     */
+    if (temp_c)
+        *temp_c = (float)t;
+
+    return true;
 }
 
-BNO055_FUNC_RETURN bno055_get_acc_calib_status(){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_get_mag_calib_status(){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    return ret;
-}
-BNO055_FUNC_RETURN bno055_get_gyr_calib_status(){
-    BNO055_FUNC_RETURN ret = ERROR_DEFAULT;
-    return ret;
+
+// static bool i2c_probe_old(uint8_t addr)
+// {
+//     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+//     i2c_master_start(cmd);
+//     i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
+//     i2c_master_stop(cmd);
+
+//     esp_err_t ret = i2c_master_cmd_begin(I2C_INSTANCE, cmd,
+//                                          pdMS_TO_TICKS(200));
+
+//     i2c_cmd_link_delete(cmd);
+
+//     return (ret == ESP_OK);
+// }
+
+
+static const char *TAG = "BNO055_TASK";
+
+
+void bno055_task(void *arg)
+{
+    TelemetryData *telem = (TelemetryData *)arg;
+
+    float ax, ay, az;
+    float heading, roll, pitch;
+    float temp_c;
+
+    uint8_t sys, gyro, accel, mag;
+
+    // /* ---------- First: old-style probe (known working) ---------- */
+
+    // vTaskDelay(pdMS_TO_TICKS(50));   // small settle time
+
+    // if (!i2c_probe_old(0x29))
+    // {
+    //     ESP_LOGE(TAG, "Old probe failed (0x29). I2C not ready for BNO055.");
+    //     vTaskDelete(NULL);
+    //     return;
+    // }
+
+    // ESP_LOGI(TAG, "Old probe OK (0x29)");
+
+    /* ---------- Now try normal init ---------- */
+
+    ESP_LOGI(TAG, "Initializing BNO055...");
+
+    if (!bno055_init())
+    {
+        ESP_LOGE(TAG, "BNO055 init failed");
+        vTaskDelete(NULL);
+        return;
+    }
+
+
+    ESP_LOGI(TAG, "BNO055 initialized");
+
+    while (1)
+    {
+        bool ok_acc  = false;
+        bool ok_ori  = false;
+        bool ok_temp = false;
+
+        /* --------- Calibration status --------- */
+
+        if (bno055_get_calib_status(&sys, &gyro, &accel, &mag))
+        {
+            ESP_LOGD(TAG,
+                     "CAL: sys=%u gyro=%u accel=%u mag=%u",
+                     sys, gyro, accel, mag);
+        }
+
+        /* --------- Linear acceleration --------- */
+
+        if (bno055_read_linear_accel(&ax, &ay, &az))
+            ok_acc = true;
+
+        /* --------- Orientation --------- */
+
+        if (bno055_read_euler(&heading, &roll, &pitch))
+            ok_ori = true;
+
+        /* --------- Temperature --------- */
+
+        if (bno055_read_temperature(&temp_c)){
+            ok_temp = true;
+        }
+
+        
+        if (!ok_acc && !ok_ori && !ok_temp)
+        {
+            fail_count++;
+
+            uint8_t st, er;
+            if (bno055_read_system_status(&st, &er))
+            {
+                ESP_LOGW(TAG, "BNO055 fail #%d  SYS_STATUS=%u  SYS_ERR=%u",
+                        fail_count, st, er);
+            }
+
+            if (fail_count >= 5)
+            {
+                ESP_LOGE(TAG, "BNO055 seems stuck - resetting sensor");
+
+                /* real recovery */
+                if (!bno055_soft_reset())
+                {
+                    ESP_LOGE(TAG, "BNO055 soft reset failed");
+                }
+
+                if (!bno055_init())
+                {
+                    ESP_LOGE(TAG, "BNO055 re-init failed");
+                }
+                else
+                {
+                    ESP_LOGI(TAG, "BNO055 recovered");
+                }
+
+                fail_count = 0;
+                vTaskDelay(pdMS_TO_TICKS(200));
+                continue;
+            }
+        }
+
+    else
+    {
+        fail_count = 0;
+    }
+
+        /* --------- Store into telemetry --------- */
+
+        xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+
+        if (ok_acc)
+        {
+            telem->accel_x = ax;
+            telem->accel_y = ay;
+            telem->accel_z = az;
+        }
+
+        if (ok_ori)
+        {
+            telem->orient_x = heading;
+            telem->orient_y = roll;
+            telem->orient_z = pitch;
+        }
+
+        if (ok_temp)
+        {
+            telem->ambient_temp = temp_c;
+        }
+
+        xSemaphoreGive(telemetry_mutex);
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }

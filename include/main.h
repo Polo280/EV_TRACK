@@ -14,12 +14,13 @@
 #include "Globals.h"
 #include "MT3333_GPS.h"
 #include "SD_memory.h"
+#include "MS4525DO.h"
+#include "FOC_UART.h"
+#include "esp_log.h"
+
 
 // CONTROL MACROS
 #define ADC_AVG_NUM_SAMPLES 8
-
-// Telemetry Struct to store current Data
-extern TelemetryData telemetry_data;
 
 /////// PERIPHERAL CONFIG ////////
 void uartInit();

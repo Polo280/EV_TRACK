@@ -3,7 +3,9 @@
 char PMTK_command_buff[256];
 char aux_buff[128];
 int UART_instance_GPS = 0;
+
 bool is_GPS_standby = false;
+bool GPS_fix_status = false;
 
 // NMEA sentence frequency config struct (by default is started with these values)
 NMEA_config_struct NMEA_cfg = {
@@ -31,7 +33,8 @@ void GPS_Init(int uart_num){
     // Set the GPS update rate 
     set_GPS_Update_Rate(GPS_UPDATE_1HZ);
     // Start with default frequency values
-    set_Output_Frequency(NMEA_SEN_NONE, OUTPUT_DISABLED);
+    // set_Output_Frequency(NMEA_SEN_NONE, OUTPUT_DISABLED);
+    set_Output_Frequency(NMEA_SEN_GGA, OUTPUT_ONE_FIX_CYCLE);
     // Set baud rate (test)
     set_GPS_Baud_Rate(GPS_BAUD_RATE_9600);
 }
@@ -101,6 +104,7 @@ int set_GPS_Update_Rate(uint8_t rate_index){
     send_GPS_Command();
     return COMMAND_OK;
 }
+
 
 /**
  * @brief Select baud rate for GPS communication
@@ -217,6 +221,8 @@ int set_GPS_Standby(void){
  * @param freq_selection: Integer representing how frequently is printed, use values in output_frequencies enum
  * 
  * @return COMMAND_OK
+ * 
+ * NOTE: For now, only using GPRMC, if another sentence is required, change its frequency to something other than 0Hz
  */
 int set_Output_Frequency(uint8_t sentence_selection, uint8_t freq_selection){
     if(sentence_selection > NMEA_SEN_NONE || freq_selection > OUTPUT_FIVE_FIX_CYCLE){
@@ -322,4 +328,212 @@ int get_GPS_Firmware_Version(void){
     snprintf(PMTK_command_buff, sizeof( PMTK_command_buff), "$PMTK605*31\r\n");
     send_GPS_Command();
     return COMMAND_OK;
+}
+
+
+static double nmea_degmin_to_decimal(double v)
+{
+    int deg = (int)(v / 100.0);
+    double min = v - (deg * 100.0);
+    return deg + min / 60.0;
+}
+
+
+static bool parse_gprmc_sentence(const char *sentence, TelemetryData *out)
+{
+    char buf[128];
+    strncpy(buf, sentence, sizeof(buf));
+    buf[sizeof(buf) - 1] = 0;
+
+    char *token;
+    int field = 0;
+
+    char *status  = NULL;
+    char *lat_str = NULL;
+    char *lat_dir = NULL;
+    char *lon_str = NULL;
+    char *lon_dir = NULL;
+
+    token = strtok(buf, ",");
+
+    while (token) {
+
+        switch (field) {
+            case 2: status  = token; break;
+            case 3: lat_str = token; break;
+            case 4: lat_dir = token; break;
+            case 5: lon_str = token; break;
+            case 6: lon_dir = token; break;
+            default: break;
+        }
+
+        token = strtok(NULL, ",");
+        field++;
+    }
+
+    if (!status) {
+            GPS_fix_status = false;   // Update global flag
+            return false;
+        }
+
+    /* Store fix status */
+    GPS_fix_status = (status[0] == 'A');
+
+    /* If no valid fix, do not update position */
+    if (!GPS_fix_status)
+        return false;
+
+    if (!lat_str || !lat_dir || !lon_str || !lon_dir)
+        return false;
+
+    double lat_raw = atof(lat_str);
+    double lon_raw = atof(lon_str);
+
+    double lat = nmea_degmin_to_decimal(lat_raw);
+    double lon = nmea_degmin_to_decimal(lon_raw);
+
+    if (lat_dir[0] == 'S') lat = -lat;
+    if (lon_dir[0] == 'W') lon = -lon;
+
+    out->latitude  = lat;
+    out->longitude = lon;
+
+    return true;
+}
+
+
+static bool parse_gpgga_sentence(const char *sentence, TelemetryData *out)
+{
+    char buf[128];
+    strncpy(buf, sentence, sizeof(buf));
+    buf[sizeof(buf) - 1] = 0;
+
+    char *token;
+    int field = 0;
+
+    char *fix_str  = NULL;
+    char *sats_str = NULL;
+    char *alt_str  = NULL;
+
+    token = strtok(buf, ",");
+
+    while (token) {
+
+        switch (field) {
+            case 6: fix_str  = token; break;   // fix quality
+            case 7: sats_str = token; break;   // number of satellites
+            case 9: alt_str  = token; break;   // altitude
+            default: break;
+        }
+
+        token = strtok(NULL, ",");
+        field++;
+    }
+
+    if (!fix_str || !sats_str || !alt_str)
+        return false;
+
+    int fix = atoi(fix_str);
+
+    /* 0 = invalid */
+    if (fix == 0)
+        return false;
+
+    out->num_sats   = (uint8_t)atoi(sats_str);
+    out->altitude_m = (float)atof(alt_str);
+
+    return true;
+}
+
+
+bool parse_nmea_sentence(const char *sentence, TelemetryData *out)
+{
+    if (sentence == NULL || out == NULL)
+        return false;
+
+    if (strncmp(sentence, "$GPRMC", 6) == 0) {
+        return parse_gprmc_sentence(sentence, out);
+    }
+
+    if (strncmp(sentence, "$GPGGA", 6) == 0 ||
+            strncmp(sentence, "$GNGGA", 6) == 0) {
+
+            return parse_gpgga_sentence(sentence, out);
+        }
+
+    return false;
+}
+
+
+void GPS_parse_task(void *arg)
+{
+    TelemetryData *telem = (TelemetryData *)arg;
+
+    static char line_buf[256];
+    int idx = 0;
+
+    uint8_t ch;
+
+    TickType_t last_wake = xTaskGetTickCount();
+
+    while (1) {
+
+        /* Collect characters until we get a full line */
+        while (uart_read_bytes(UART_instance_GPS, &ch, 1, 0) == 1) {
+
+            if (ch == '\n') {
+                line_buf[idx] = 0;
+
+                xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+                /* Parse one complete sentence */
+                parse_nmea_sentence(line_buf, telem);
+                xSemaphoreGive(telemetry_mutex);
+
+                idx = 0;
+            }
+            else if (ch != '\r') {
+
+                if (idx < (int)sizeof(line_buf) - 1) {
+                    line_buf[idx++] = (char)ch;
+                } else {
+                    /* overflow → drop line */
+                    idx = 0;
+                }
+            }
+        }
+
+    //    printf("Longitude: %f, Latitude: %f, Altitude: %f, Number of sats: %d\n", 
+    //    telem->longitude,
+    //    telem->latitude, 
+    //    telem->altitude_m,
+    //    telem->num_sats);
+
+        /* run at 1 Hz */
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(1000));
+    }
+}
+
+
+void GPS_uart_debug_read_and_print(void)
+{
+    uint8_t rx_buf[256];
+
+    int len = uart_read_bytes(
+                    UART_instance_GPS,
+                    rx_buf,
+                    sizeof(rx_buf) - 1,
+                    pdMS_TO_TICKS(1000));
+
+    if (len > 0) {
+        rx_buf[len] = '\0';   // make it a C string
+        ESP_LOGI("GPS_UART", "%s", (char *)rx_buf);
+    }
+}
+
+
+void GPS_debug_task(void *arg)
+{
+    while (1) {
+        GPS_uart_debug_read_and_print();
+    }
 }

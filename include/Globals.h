@@ -1,30 +1,48 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
 /////////////////////////////////////////////////////////
 ///////////////////// BOARD PINOUT //////////////////////
 /////////////////////////////////////////////////////////
 
-// Status RGB LED
-#define RED_LED_GPIO           GPIO_NUM_2    
-#define GREEN_LED_GPIO         GPIO_NUM_0
-#define BLUE_LED_GPIO          GPIO_NUM_4
+// GPIOs
+#define LED_PIN                       GPIO_NUM_12
+#define TEST_EN_BUTTON_PIN            GPIO_NUM_13
+#define SD_DETECT_PIN                 GPIO_NUM_4
 
 // GPS UART 
-#define GPS_UART_CHANNEL       UART_NUM_2
-#define GPS_RX_GPIO            GPIO_NUM_16   
-#define GPS_TX_GPIO            GPIO_NUM_17
+#define GPS_UART_CHANNEL              UART_NUM_1
+#define GPS_RX_GPIO                   GPIO_NUM_14
+#define GPS_TX_GPIO                   GPIO_NUM_15
+
+// DRIVER UART
+#define FOC_DRIVER_UART_CHANNEL       UART_NUM_0
+#define FOC_DRIVER_RX_GPIO            GPIO_NUM_0
+#define FOC_DRIVER_TX_GPIO            GPIO_NUM_1
+#define FOC_DRIVER_BAUDRATE           115200
+
+// TFT Display UART
+#define DISPLAY_UART_CHANNEL          UART_NUM_2
+#define DISPLAY_RX_GPIO               GPIO_NUM_16   
+#define DISPLAY_TX_GPIO               GPIO_NUM_17
 
 // I2C Bus
-#define I2C_INSTANCE I2C_NUM_0
-#define I2C_SDA      GPIO_NUM_21
-#define I2C_SCL      GPIO_NUM_22
-#define I2C_FREQ_HZ  100000   // Fast mode
+#define I2C_INSTANCE                  I2C_NUM_0
+#define I2C_SDA                       GPIO_NUM_21
+#define I2C_SCL                       GPIO_NUM_22
+#define I2C_FREQ_HZ                   50000 
 
-// ADC Measurements
-#define VBAT_ADC_PIN GPIO_NUM_32
+// SPI Bus
+#define SPI_MISO_PIN                  GPIO_NUM_19
+#define SPI_MOSI_PIN                  GPIO_NUM_23
+#define SPI_CLK_PIN                   GPIO_NUM_18
+#define SD_SPI_CS_PIN                 GPIO_NUM_26     // Micro SD
+#define RF_SPI_CS_PIN                 GPIO_NUM_25
  
-#define TRANSMIT_ENABLE_GPIO   GPIO_NUM_15   // Enable WIFI data transmission push button pin
 
 //////////////////////////////////////////////////////////
 
@@ -38,6 +56,12 @@ typedef enum {
 
 extern uint8_t current_status_code;
 extern bool WIFI_transmit_enable;
+
+extern bool test_mode_enabled;
+extern volatile bool SD_card_detected; 
+
+extern bool GPS_fix_status; 
+
 
 // TELEMETRY DATA TEMPLATE
 typedef struct {
@@ -55,6 +79,17 @@ typedef struct {
     float velocity_x;
     float velocity_y;
     float ambient_temp;
+    float altitude_m;
+    uint8_t num_sats;
+    float air_speed;
 } TelemetryData;
+
+
+// Telemetry Struct to store current Data
+extern TelemetryData telemetry_data;
+
+// Mutexes
+extern SemaphoreHandle_t telemetry_mutex;
+extern SemaphoreHandle_t i2c_mutex;
 
 #endif /* GLOBALS_H */

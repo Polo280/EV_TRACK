@@ -15,6 +15,18 @@ char ip_address[20];
 
 //////////////////////////////// 
 
+/**
+ * @brief Initialize the Non-Volatile Storage (NVS).
+ *
+ * This function initializes the NVS flash partition. If the NVS
+ * partition is found to be full, corrupted, or incompatible with
+ * the current ESP-IDF version, it erases the partition and
+ * re-initializes it.
+ *
+ * This ensures that NVS is always in a usable state for storing
+ * persistent data such as Wi-Fi credentials, device settings,
+ * and calibration values.
+ */
 void NVS_Init(void){
     esp_err_t nvs_status = nvs_flash_init();
     if(nvs_status == ESP_ERR_NVS_NO_FREE_PAGES || nvs_status == ESP_ERR_NVS_NEW_VERSION_FOUND){
@@ -90,34 +102,11 @@ void WIFI_Connect(void *pvParameter){
     vTaskDelete(NULL);
 }
 
-// Simulated random float generator between min and max
-float randf(float min, float max) {
-    return min + ((float)rand() / RAND_MAX) * (max - min);
-}
-
-// Simulated TelemetryData population
-void generate_random_telemetry(TelemetryData *data) {
-    data->battery_voltage = randf(20.0f, 28.0f);  // volts
-    data->current_amps    = randf(0.0f, 10.0f);   // amps
-    data->latitude        = randf(-90.0f, 90.0f); // degrees
-    data->longitude       = randf(-180.0f, 180.0f);
-    data->accel_x         = randf(-50.0f, 50.0f); // m/s^2
-    data->accel_y         = randf(-50.0f, 50.0f);
-    data->accel_z         = randf(-50.0f, 50.0f);
-    data->orient_x        = randf(0.0f, 360.0f);  // degrees
-    data->orient_y        = randf(0.0f, 360.0f);
-    data->orient_z        = randf(0.0f, 360.0f);
-    data->rpms            = rand() % 10000;       // 0–9999
-    data->velocity_x      = randf(-20.0f, 20.0f);  // m/s
-    data->velocity_y      = randf(-20.0f, 20.0f);
-    data->ambient_temp    = randf(-10.0f, 50.0f);  // °C
-}
 
 void post_data(void *pvParameter) {
     while(true){
         if(WIFI_transmit_enable){
             TelemetryData *data = (TelemetryData *)pvParameter;
-            generate_random_telemetry(data);
 
             esp_http_client_config_t config = {
                 .url = "https://3334b6efc43c.ngrok-free.app/api/lectures" ,

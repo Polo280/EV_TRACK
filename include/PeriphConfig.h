@@ -3,15 +3,22 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "driver/i2c.h"
+#include "esp_timer.h"
+#include "freertos/timers.h"
+#include "driver/sdspi_host.h"
+#include "driver/spi_common.h"
+#include "BNO055.h"
+
 #include "string.h"
 #include "Globals.h"
 
 #include "MT3333_GPS.h"
-
-// RGB status LED
-extern uint8_t RGB_LED_GPIOs[3];
+// #include "BNO055.h"
+#include "Globals.h"
 
 // CONFIGURATION FUNCTIONS 
-void GPIO_Config(void *);
-void UART_Config(void *);
-void I2C_Config(void *);
+void GPIO_Config();
+void UART_Config();
+void I2C_Config();
+esp_err_t SPI_Config();
+void Peripheral_Config(void *);
