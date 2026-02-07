@@ -16,6 +16,7 @@
 #include "SD_memory.h"
 #include "MS4525DO.h"
 #include "FOC_UART.h"
+#include "Driver_Screen.h"
 #include "esp_log.h"
 
 

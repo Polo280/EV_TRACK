@@ -11,8 +11,8 @@ uint8_t current_status_code = STATUS_OFFLINE;
 TelemetryData telemetry_data = {
     .battery_voltage = 0.0f,
     .current_amps    = 0.0f,
-    .latitude        = 0.0,
-    .longitude       = 0.0,
+    .latitude        = 0.0f,
+    .longitude       = 0.0f,
     .accel_x         = 0.0f,
     .accel_y         = 0.0f,
     .accel_z         = 0.0f,
@@ -41,7 +41,12 @@ void status_LED_task(void *arg){
             gpio_set_level(LED_PIN, led_state);
 
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        if(current_status_code == STATUS_ONLINE){
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        else{
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
     }
 }
 
@@ -101,6 +106,63 @@ static void telemetry_print_task(void *arg)
     }
 }
 
+void bno055_task(void *arg)
+{
+    TelemetryData *telem = (TelemetryData *)arg;
+
+    double acc[3];
+    double euler[3];
+    int8_t temp;
+
+    ESP_LOGI("BNO055", "Starting BNO055...");
+
+    esp_err_t err = bno055_begin_i2c(OPERATION_MODE_NDOF);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE("BNO055", "bno055_begin_i2c failed");
+        vTaskDelete(NULL);
+    }
+
+    /* optional but recommended */
+    set_external_crystal(true);
+
+    while (1)
+    {
+        bool ok_acc  = false;
+        bool ok_ori  = false;
+
+        if (get_vector(VECTOR_LINEARACCEL, acc) == ESP_OK)
+            ok_acc = true;
+
+        if (get_vector(VECTOR_EULER, euler) == ESP_OK)
+            ok_ori = true;
+
+        temp = get_temp();
+
+        xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+
+        if (ok_acc)
+        {
+            telem->accel_x = acc[0];   // m/s²
+            telem->accel_y = acc[1];
+            telem->accel_z = acc[2];
+        }
+
+        if (ok_ori)
+        {
+            telem->orient_x = euler[0];   // degrees
+            telem->orient_y = euler[1];
+            telem->orient_z = euler[2];
+        }
+
+        telem->ambient_temp = (float)temp;
+
+        xSemaphoreGive(telemetry_mutex);
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 
 void app_main(void)
 {
@@ -112,6 +174,7 @@ void app_main(void)
 
     // Config and setup
     NVS_Init();
+    
     xTaskCreate(Peripheral_Config, "Peripheral_Config", 4096, NULL, 15, NULL);
 
     // Periodic get data tasks
@@ -119,10 +182,13 @@ void app_main(void)
     xTaskCreatePinnedToCore(GPS_parse_task, "gps_parse", 4096, &telemetry_data, 5, NULL, 1);
     xTaskCreatePinnedToCore(pitot_task, "pitot_task", 4096, &telemetry_data, 6, NULL, 1);
     xTaskCreate(foc_uart_test_task, "foc_uart_test_task", 4096, NULL, 5, NULL);
+    // xTaskCreate(bno055_task, "bno055_task", 4096, &telemetry_data, 4, NULL);
 
+     xTaskCreate(post_data, "post_data", 8192, &telemetry_data, 5, NULL);
+     xTaskCreatePinnedToCore(can_tx_task, "can_tx_task", 4096, NULL, 5, NULL, 1);
 
     // Status LED
     xTaskCreate(status_LED_task, "status_LED", 2048, NULL, 15, NULL);
 
-    xTaskCreate(telemetry_print_task, "telemetry_print_task", 4096, NULL, 4, NULL);
+    // xTaskCreate(telemetry_print_task, "telemetry_print_task", 4096, NULL, 4, NULL);
 }

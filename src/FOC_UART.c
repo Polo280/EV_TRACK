@@ -66,6 +66,10 @@ bool foc_uart_send_cmd(foc_uart_cmd_t cmd,
 
     frame[3 + payload_len] = crc;
 
+    if (payload_len > 60){
+        return false;
+    }
+
     int tx_len = 4 + payload_len;
 
     int written = uart_write_bytes(FOC_DRIVER_UART_CHANNEL,

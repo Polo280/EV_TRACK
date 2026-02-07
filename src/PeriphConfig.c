@@ -160,7 +160,7 @@ void Peripheral_Config(void *arg){
     I2C_Config();
     // SPI_Config();
 
-    xTaskCreate(bno055_task, "bno055_task", 4096, &telemetry_data, 4, NULL);
+    // xTaskCreate(bno055_task, "bno055_task", 4096, &telemetry_data, 4, NULL);
 
     vTaskDelete(NULL);
 }

@@ -47,4 +47,4 @@ void post_data(void *);
 /**
  * @brief Connects the ESP to a WiFi network with a given SSID and password
  */
-void WIFI_Connect(void *pvParameter);
+void WIFI_Connect(void);
