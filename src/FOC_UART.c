@@ -93,8 +93,9 @@ bool foc_uart_receive_reply(foc_uart_cmd_t expected_cmd,
     /* search SOF */
     while (1)
     {
-        if ((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS > timeout_ms)
+        if ((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS > timeout_ms){
             return false;
+        }
 
         if (uart_read_bytes(FOC_DRIVER_UART_CHANNEL, &b, 1, pdMS_TO_TICKS(10)) == 1)
         {
@@ -166,7 +167,7 @@ bool foc_uart_get_all_fast(foc_all_fast_t *out)
     if (!foc_uart_send_cmd(FOC_CMD_GET_ALL_FAST, NULL, 0))
         return false;
 
-    if (!foc_uart_receive_reply(FOC_CMD_GET_ALL_FAST, pl, sizeof(pl), &len, 50))
+    if (!foc_uart_receive_reply(FOC_CMD_GET_ALL_FAST, pl, sizeof(pl), &len, 200))
         return false;
 
     if (len != 12)
@@ -184,7 +185,7 @@ bool foc_uart_get_status(foc_status_t *out)
     if (!foc_uart_send_cmd(FOC_CMD_GET_STATUS, NULL, 0))
         return false;
 
-    if (!foc_uart_receive_reply(FOC_CMD_GET_STATUS, pl, sizeof(pl), &len, 50))
+    if (!foc_uart_receive_reply(FOC_CMD_GET_STATUS, pl, sizeof(pl), &len, 200))
         return false;
 
     if (len != 3)
@@ -339,14 +340,14 @@ void foc_uart_test_task(void *arg)
                      status.state,
                      status.fault_flags);
         }
-        // else
-        // {
-        //     ESP_LOGW(TAG, "GET_STATUS failed");
-        // }
+        else
+        {
+            // ESP_LOGW(TAG, "GET_STATUS failed");
+        }
 
         vTaskDelay(pdMS_TO_TICKS(20));
 
-        uart_flush_input(FOC_DRIVER_UART_CHANNEL);
+        // uart_flush_input(FOC_DRIVER_UART_CHANNEL);
 
         /* ---------- FAST TELEMETRY ---------- */
         if (foc_uart_get_all_fast(&fast))
@@ -358,10 +359,10 @@ void foc_uart_test_task(void *arg)
                      (long)fast.rpm,
                      fast.fault_flags);
         }
-        // else
-        // {
+        else
+        {
             // ESP_LOGW(TAG, "GET_ALL_FAST failed");
-        // }
+        }
 
         /*
          * Optional test:

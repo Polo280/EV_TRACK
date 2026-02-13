@@ -47,9 +47,10 @@ void can_tx_task(void *arg)
 
             if (err == ESP_OK) {
                 payload_base++;
-            } else {
-                ESP_LOGE(TAG_CAN, "TX failed (%s)", esp_err_to_name(err));
-            }
+            } 
+            // else {
+            //     ESP_LOGE(TAG_CAN, "TX failed (%s)", esp_err_to_name(err));
+            // }
         }
         else if (status.state == TWAI_STATE_BUS_OFF) {
             twai_stop();
@@ -68,11 +69,9 @@ void can_tx_task(void *arg)
             vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(3000));
         }
         else if (status.state == TWAI_STATE_RECOVERING) {
-
-            // absolutely do nothing
+            // do nothing
         }
 
-        // Precise 1 second period
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(500));
     }
 }

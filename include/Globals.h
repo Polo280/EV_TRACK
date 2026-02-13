@@ -4,6 +4,16 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include <stdio.h>
+#include <string.h>
+#include "driver/uart.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_netif.h"
+#include "esp_system.h"
+#include "esp_event.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
 
 /////////////////////////////////////////////////////////
 ///////////////////// BOARD PINOUT //////////////////////
@@ -54,13 +64,12 @@ typedef enum {
     STATUS_ERROR
 } STATUS_CODES;
 
+
+// Control variables
 extern uint8_t current_status_code;
-extern bool WIFI_transmit_enable;
-
 extern bool test_mode_enabled;
-extern volatile bool SD_card_detected; 
-
 extern bool GPS_fix_status; 
+extern volatile bool SD_card_detected; 
 
 
 // TELEMETRY DATA TEMPLATE

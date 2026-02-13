@@ -21,7 +21,7 @@ esp_err_t sd_write_csv_header(const char *path);
 esp_err_t sd_append_telemetry_csv(const char *path, const TelemetryData *data);
 
 // RTOS tasks
-void SD_monitor_task(void *);
+void SD_manager_task(void *);
 void SD_append_data_task(void *);
 
 #ifdef __cplusplus

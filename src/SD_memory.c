@@ -105,7 +105,8 @@ esp_err_t sd_append_line(const char *path, const char *text)
  *
  * @param arg Unused.
  */
-void SD_monitor_task(void *arg){
+void SD_manager_task(void *arg){
+    TelemetryData *telemetry_data = (TelemetryData *)arg;
     bool last_state = false;
 
     while (1) {
@@ -123,6 +124,13 @@ void SD_monitor_task(void *arg){
                 unmount_sdcard();
             }
         }
+
+        if(SD_card_detected){
+            xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+            sd_append_telemetry_csv("/sdcard/telem.csv", telemetry_data);
+            xSemaphoreGive(telemetry_mutex);
+        }
+        
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
@@ -151,7 +159,7 @@ esp_err_t sd_write_csv_header(const char *path)
         "battery_voltage,current_amps,latitude,longitude,"
         "accel_x,accel_y,accel_z,"
         "orient_x,orient_y,orient_z,"
-        "rpms,velocity_x,velocity_y,ambient_temp";
+        "rpms,velocity_x,velocity_y,ambient_temp,altitude_m,num_sats,air_speed";
 
     FILE *f = fopen(path, "w");   // "w" creates/overwrites and writes header once
     if (!f) {
@@ -198,7 +206,7 @@ esp_err_t sd_append_telemetry_csv(const char *path, const TelemetryData *data)
         "%.3f,%.3f,%.8lf,%.8lf,"
         "%.3f,%.3f,%.3f,"
         "%.3f,%.3f,%.3f,"
-        "%u,%.3f,%.3f,%.2f\n",
+        "%u,%.3f,%.3f,%.2f,%.2f,%u,%.2f\n",
         data->battery_voltage,
         data->current_amps,
         data->latitude,
@@ -212,7 +220,10 @@ esp_err_t sd_append_telemetry_csv(const char *path, const TelemetryData *data)
         data->rpms,
         data->velocity_x,
         data->velocity_y,
-        data->ambient_temp
+        data->ambient_temp,
+        data->altitude_m,
+        data->num_sats, 
+        data->air_speed
     );
 
     if (ret < 0) {

@@ -1,4 +1,5 @@
 #include "PeriphConfig.h"
+#include "bno055.h"
 
 // Pinout check - https://lastminuteengineers.com/esp32-wroom-32-pinout-reference/
 
@@ -80,7 +81,6 @@ void UART_Config(){
     };
     QueueHandle_t uart0_queue;
     QueueHandle_t uart1_queue;
-    // QueueHandle_t uart2_queue;
 
     // Configure UART 0 (GPS)
     ESP_ERROR_CHECK(uart_driver_install(GPS_UART_CHANNEL, buff_size, buff_size, 10, &uart0_queue, 0));
@@ -93,11 +93,60 @@ void UART_Config(){
     ESP_ERROR_CHECK(uart_driver_install(FOC_DRIVER_UART_CHANNEL, buff_size, buff_size, 10, &uart1_queue, 0));
     ESP_ERROR_CHECK(uart_param_config(FOC_DRIVER_UART_CHANNEL, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(FOC_DRIVER_UART_CHANNEL, FOC_DRIVER_TX_GPIO, FOC_DRIVER_RX_GPIO, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+}
 
-    // Configure UART 2 (TFT Display)
-    // ESP_ERROR_CHECK(uart_driver_install(DISPLAY_UART_CHANNEL, buff_size, buff_size, 10, &uart2_queue, 0));
-    // ESP_ERROR_CHECK(uart_param_config(DISPLAY_UART_CHANNEL, &uart_config));
-    // ESP_ERROR_CHECK(uart_set_pin(DISPLAY_UART_CHANNEL, DISPLAY_TX_GPIO, DISPLAY_RX_GPIO, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+static void bno055_task(void *arg)
+{
+    TelemetryData *telem = (TelemetryData *)arg;
+
+    double acc[3];
+    double euler[3];
+    int8_t temp;
+
+    ESP_LOGI("BNO055", "Starting BNO055...");
+
+    esp_err_t err = bno055_begin_i2c(OPERATION_MODE_NDOF);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE("BNO055", "bno055_begin_i2c failed");
+        vTaskDelete(NULL);
+    }
+
+    while (1)
+    {
+        bool ok_acc  = false;
+        bool ok_ori  = false;
+
+        if (get_vector(VECTOR_LINEARACCEL, acc) == ESP_OK)
+            ok_acc = true;
+
+        if (get_vector(VECTOR_EULER, euler) == ESP_OK)
+            ok_ori = true;
+
+        temp = get_temp();
+
+        xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+
+        if (ok_acc)
+        {
+            telem->accel_x = acc[0];   // m/s²
+            telem->accel_y = acc[1];
+            telem->accel_z = acc[2];
+        }
+
+        if (ok_ori)
+        {
+            telem->orient_x = euler[0];   // degrees
+            telem->orient_y = euler[1];
+            telem->orient_z = euler[2];
+        }
+
+        telem->ambient_temp = (float)temp;
+        xSemaphoreGive(telemetry_mutex);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    vTaskDelete(NULL);
 }
 
 
@@ -158,9 +207,8 @@ void Peripheral_Config(void *arg){
     GPIO_Config();
     UART_Config();
     I2C_Config();
-    // SPI_Config();
+    SPI_Config();
 
-    // xTaskCreate(bno055_task, "bno055_task", 4096, &telemetry_data, 4, NULL);
-
+    xTaskCreate(bno055_task, "bno055_task", 4096, &telemetry_data, 4, NULL);
     vTaskDelete(NULL);
 }

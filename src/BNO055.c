@@ -177,16 +177,16 @@ static esp_err_t print_calib_profile(uint8_t *calib_data)
 esp_err_t bno055_begin_i2c(bno055_opmode_t mode)
 {
     /** Inintialize the i2c master configuration **/
-    esp_err_t err = i2c_master_init();
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "i2c Master init error: %d", err);
-        i2c_driver_delete(I2C_NUM_0);
-        return err;
-    }
+    // esp_err_t err = i2c_master_init();
+    // if (err != ESP_OK)
+    // {
+    //     ESP_LOGE(TAG, "i2c Master init error: %d", err);
+    //     i2c_driver_delete(I2C_NUM_0);
+    //     return err;
+    // }
 
     /** Set the timeout for the communication bus (clock stretching) **/
-    err = i2c_set_timeout((i2c_port_t)I2C_NUM_0, (int)INITIAL_MASTER_TOUT);
+    esp_err_t err = i2c_set_timeout((i2c_port_t)I2C_NUM_0, (int)INITIAL_MASTER_TOUT);
     if (err != ESP_OK)
     {
         return err;

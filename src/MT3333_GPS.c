@@ -372,19 +372,21 @@ static bool parse_gprmc_sentence(const char *sentence, TelemetryData *out)
     }
 
     if (!status) {
-            GPS_fix_status = false;   // Update global flag
-            return false;
-        }
+        GPS_fix_status = false;   // Update global flag
+        return false;
+    }
 
     /* Store fix status */
     GPS_fix_status = (status[0] == 'A');
 
     /* If no valid fix, do not update position */
-    if (!GPS_fix_status)
+    if (!GPS_fix_status){
         return false;
+    }
 
-    if (!lat_str || !lat_dir || !lon_str || !lon_dir)
+    if (!lat_str || !lat_dir || !lon_str || !lon_dir){
         return false;
+    }
 
     double lat_raw = atof(lat_str);
     double lon_raw = atof(lon_str);
@@ -429,18 +431,24 @@ static bool parse_gpgga_sentence(const char *sentence, TelemetryData *out)
         token = strtok(NULL, ",");
         field++;
     }
+    
+    // if (!fix_str || !sats_str || !alt_str){
+    //     return false;
+    // }
 
-    if (!fix_str || !sats_str || !alt_str)
-        return false;
+    /* Default values */
+    out->num_sats   = 0;
+    out->altitude_m = 0.0f;
 
-    int fix = atoi(fix_str);
+    /* Parse satellites */
+    if (sats_str && *sats_str) {
+        out->num_sats = (uint8_t)atoi(sats_str);
+    }
 
-    /* 0 = invalid */
-    if (fix == 0)
-        return false;
-
-    out->num_sats   = (uint8_t)atoi(sats_str);
-    out->altitude_m = (float)atof(alt_str);
+    /* Parse altitude */
+    if (alt_str && *alt_str) {
+        out->altitude_m = (float)atof(alt_str);
+    }
 
     return true;
 }

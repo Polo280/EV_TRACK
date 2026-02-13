@@ -35,7 +35,7 @@ typedef enum
 
 /* ---------- data structures ---------- */
 
-typedef struct
+typedef struct __attribute__((packed))
 {
     uint16_t vbus_mV;
     int32_t  ibus_mA;
@@ -44,7 +44,7 @@ typedef struct
 } foc_all_fast_t;
 
 
-typedef struct
+typedef struct __attribute__((packed))
 {
     uint16_t fault_flags;
     uint8_t  state;

@@ -142,7 +142,7 @@ void pitot_task(void *arg)
     vTaskDelay(pdMS_TO_TICKS(200));
 
     /* Zero calibration (car must be stopped) */
-    ms4525do_calibrate_zero(&pitot, 50);
+    ms4525do_calibrate_zero(&pitot, 300);
 
     while (1) {
 

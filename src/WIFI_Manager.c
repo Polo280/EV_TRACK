@@ -108,77 +108,70 @@ void  post_data(void *pvParameter)
 
     while(true)
     {
-        if(WIFI_transmit_enable)
-        {
-            esp_http_client_config_t config = {
-                .url = "http://192.168.68.107:8080/telemetry",
-            };
+        esp_http_client_config_t config = {
+            .url = "http://192.168.68.107:8080/telemetry",
+        };
 
-            esp_http_client_handle_t client = esp_http_client_init(&config);
+        esp_http_client_handle_t client = esp_http_client_init(&config);
 
-            char post_data[640];
+        char post_data[640];
 
-            snprintf(post_data, sizeof(post_data),
-                "{"
-                "\"voltage_battery\": %.2f, "
-                "\"current\": %.2f, "
-                "\"latitude\": %.6f, "
-                "\"longitude\": %.6f, "
-                "\"acceleration_x\": %.2f, "
-                "\"acceleration_y\": %.2f, "
-                "\"acceleration_z\": %.2f, "
-                "\"orientation_x\": %.2f, "
-                "\"orientation_y\": %.2f, "
-                "\"orientation_z\": %.2f, "
-                "\"rpm_motor\": %d, "
-                "\"velocity_x\": %.2f, "
-                "\"velocity_y\": %.2f, "
-                "\"ambient_temp\": %.2f, "
-                "\"altitude_m\": %.2f, "
-                "\"num_sats\": %d, "
-                "\"air_speed\": %.2f, "
-                "\"steering_angle\": 0.0"
-                "}",
-                data->battery_voltage,
-                data->current_amps,
-                data->latitude,
-                data->longitude,
-                data->accel_x,
-                data->accel_y,
-                data->accel_z,
-                data->orient_x,
-                data->orient_y,
-                data->orient_z,
-                data->rpms,
-                data->velocity_x,
-                data->velocity_y,
-                data->ambient_temp,
-                data->altitude_m,
-                data->num_sats,
-                data->air_speed
-            );
+        snprintf(post_data, sizeof(post_data),
+            "{"
+            "\"voltage_battery\": %.2f, "
+            "\"current\": %.2f, "
+            "\"latitude\": %.6f, "
+            "\"longitude\": %.6f, "
+            "\"acceleration_x\": %.2f, "
+            "\"acceleration_y\": %.2f, "
+            "\"acceleration_z\": %.2f, "
+            "\"orientation_x\": %.2f, "
+            "\"orientation_y\": %.2f, "
+            "\"orientation_z\": %.2f, "
+            "\"rpm_motor\": %d, "
+            "\"velocity_x\": %.2f, "
+            "\"velocity_y\": %.2f, "
+            "\"ambient_temp\": %.2f, "
+            "\"altitude_m\": %.2f, "
+            "\"num_sats\": %d, "
+            "\"air_speed\": %.2f, "
+            "\"steering_angle\": 0.0"
+            "}",
+            data->battery_voltage,
+            data->current_amps,
+            data->latitude,
+            data->longitude,
+            data->accel_x,
+            data->accel_y,
+            data->accel_z,
+            data->orient_x,
+            data->orient_y,
+            data->orient_z,
+            data->rpms,
+            data->velocity_x,
+            data->velocity_y,
+            data->ambient_temp,
+            data->altitude_m,
+            data->num_sats,
+            data->air_speed
+        );
 
-            esp_http_client_set_method(client, HTTP_METHOD_POST);
-            esp_http_client_set_post_field(client, post_data, strlen(post_data));
-            esp_http_client_set_header(client, "Content-Type", "application/json");
+        esp_http_client_set_method(client, HTTP_METHOD_POST);
+        esp_http_client_set_post_field(client, post_data, strlen(post_data));
+        esp_http_client_set_header(client, "Content-Type", "application/json");
 
-            esp_err_t err = esp_http_client_perform(client);
+        esp_err_t err = esp_http_client_perform(client);
 
-            // if (err == ESP_OK) {
-            //     ESP_LOGI("HTTP", "Telemetry sent");
-            // } else {
-            //     ESP_LOGE("HTTP", "POST failed: %s", esp_err_to_name(err));
-            // }
+        // if (err == ESP_OK) {
+        //     ESP_LOGI("HTTP", "Telemetry sent");
+        // } else {
+        //     ESP_LOGE("HTTP", "POST failed: %s", esp_err_to_name(err));
+        // }
 
-            esp_http_client_cleanup(client);
+        esp_http_client_cleanup(client);
 
-            vTaskDelay(pdMS_TO_TICKS(500));
-        }
-        else
-        {
-            vTaskDelay(pdMS_TO_TICKS(200));
-        }
-    }
+        vTaskDelay(pdMS_TO_TICKS(500));
+}
 }
 
 
