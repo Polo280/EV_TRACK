@@ -4,6 +4,17 @@ uint8_t payload_base = 1;
 
 static bool recovery_started = false;
 
+void U32toBytes(uint32_t v, uint8_t *b){
+    b[0] = (uint8_t)(v >> 24);
+    b[1] = (uint8_t)(v >> 16);
+    b[2] = (uint8_t)(v >> 8);
+    b[3] = (uint8_t)(v);
+}
+
+void I32toBytes(int32_t v, uint8_t *b){
+    U32toBytes((uint32_t)v, b);
+}
+
 /* ---------------- CAN INIT ---------------- */
 void can_init(void)
 {
@@ -23,7 +34,7 @@ void can_init(void)
 void can_tx_task(void *arg)
 {
     twai_message_t tx_msg = {
-        .identifier = CAN_TEST_ID,
+        .identifier = 0x008,
         .data_length_code = 8,
         .flags = TWAI_MSG_FLAG_NONE
     };
@@ -39,14 +50,17 @@ void can_tx_task(void *arg)
         if (status.state == TWAI_STATE_RUNNING) {
             recovery_started = false;
 
-            for (int i = 0; i < 8; i++) {
-                tx_msg.data[i] = payload_base + i;
-            }
-
+            double lat_1e7 = telemetry_data.latitude * 1e7;
+            double lon_1e7 = telemetry_data.longitude * 1e7;
+            int32_t lat_tx = (int32_t)lat_1e7;
+            int32_t lon_tx = (int32_t)lon_1e7;
+            I32toBytes(lat_tx, &tx_msg.data[0]);
+            I32toBytes(lon_tx, &tx_msg.data[4]);
+            
             esp_err_t err = twai_transmit(&tx_msg, pdMS_TO_TICKS(100));
 
             if (err == ESP_OK) {
-                payload_base++;
+                ESP_LOGE(TAG_CAN, "Transmit OK");
             } 
             // else {
             //     ESP_LOGE(TAG_CAN, "TX failed (%s)", esp_err_to_name(err));

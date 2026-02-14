@@ -3,6 +3,7 @@
 #include "freertos/task.h"
 #include "driver/twai.h"
 #include "esp_log.h"
+#include "Globals.h"
 
 #define TAG_CAN "CAN_TX"
 

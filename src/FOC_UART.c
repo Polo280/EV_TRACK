@@ -342,12 +342,12 @@ void foc_uart_test_task(void *arg)
         }
         else
         {
-            // ESP_LOGW(TAG, "GET_STATUS failed");
+            ESP_LOGW(TAG, "GET_STATUS failed");
         }
 
         vTaskDelay(pdMS_TO_TICKS(20));
 
-        // uart_flush_input(FOC_DRIVER_UART_CHANNEL);
+        uart_flush_input(FOC_DRIVER_UART_CHANNEL);
 
         /* ---------- FAST TELEMETRY ---------- */
         if (foc_uart_get_all_fast(&fast))
@@ -361,7 +361,7 @@ void foc_uart_test_task(void *arg)
         }
         else
         {
-            // ESP_LOGW(TAG, "GET_ALL_FAST failed");
+            ESP_LOGW(TAG, "GET_ALL_FAST failed");
         }
 
         /*
