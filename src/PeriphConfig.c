@@ -73,24 +73,27 @@ void UART_Config(){
     const int buff_size = 2048;
 
     uart_config_t uart_config = {
-        .baud_rate = 9600,
+        .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
     };
-    QueueHandle_t uart0_queue;
-    QueueHandle_t uart1_queue;
+    
+    // QueueHandle_t uart0_queue;
+    // QueueHandle_t uart1_queue;
+    // QueueHandle_t uart2_queue;
 
-    // Configure UART 0 (GPS)
-    ESP_ERROR_CHECK(uart_driver_install(GPS_UART_CHANNEL, buff_size, buff_size, 10, &uart0_queue, 0));
+    // Configure UART 1 (GPS)
+    uart_config.baud_rate = 9600;
+    ESP_ERROR_CHECK(uart_driver_install(GPS_UART_CHANNEL, buff_size, buff_size, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_param_config(GPS_UART_CHANNEL, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(GPS_UART_CHANNEL, GPS_TX_GPIO, GPS_RX_GPIO, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     GPS_Init(GPS_UART_CHANNEL);
 
-    // Configure UART 1 (FOC Driver)
+    // Configure UART 2 (FOC Driver)
     uart_config.baud_rate = 115200;
-    ESP_ERROR_CHECK(uart_driver_install(FOC_DRIVER_UART_CHANNEL, buff_size, buff_size, 10, &uart1_queue, 0));
+    ESP_ERROR_CHECK(uart_driver_install(FOC_DRIVER_UART_CHANNEL, buff_size, buff_size, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_param_config(FOC_DRIVER_UART_CHANNEL, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(FOC_DRIVER_UART_CHANNEL, FOC_DRIVER_TX_GPIO, FOC_DRIVER_RX_GPIO, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 }

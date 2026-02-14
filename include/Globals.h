@@ -31,14 +31,9 @@
 
 // DRIVER UART
 #define FOC_DRIVER_UART_CHANNEL       UART_NUM_0
-#define FOC_DRIVER_RX_GPIO            GPIO_NUM_0
+#define FOC_DRIVER_RX_GPIO            GPIO_NUM_3
 #define FOC_DRIVER_TX_GPIO            GPIO_NUM_1
 #define FOC_DRIVER_BAUDRATE           115200
-
-// TFT Display UART
-#define DISPLAY_UART_CHANNEL          UART_NUM_2
-#define DISPLAY_RX_GPIO               GPIO_NUM_16   
-#define DISPLAY_TX_GPIO               GPIO_NUM_17
 
 // I2C Bus
 #define I2C_INSTANCE                  I2C_NUM_0

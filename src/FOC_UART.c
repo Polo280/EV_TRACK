@@ -43,6 +43,7 @@ void foc_uart_init(void)
                  FOC_DRIVER_RX_GPIO,
                  UART_PIN_NO_CHANGE,
                  UART_PIN_NO_CHANGE);
+
 }
 
 /* ---------- low level send ---------- */
@@ -93,22 +94,30 @@ bool foc_uart_receive_reply(foc_uart_cmd_t expected_cmd,
     /* search SOF */
     while (1)
     {
+
         if ((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS > timeout_ms){
             return false;
         }
 
-        if (uart_read_bytes(FOC_DRIVER_UART_CHANNEL, &b, 1, pdMS_TO_TICKS(10)) == 1)
-        {
+        // Read one byte at a time
+        int r = uart_read_bytes(FOC_DRIVER_UART_CHANNEL, &b, 1, pdMS_TO_TICKS(10));
+
+        if (r == 1){
+            ESP_LOGI("FOC", "RX byte = 0x%02X", b);
+
             if (b == FOC_UART_SOF)
+            {
+                ESP_LOGI("FOC", "REAL SOF detected");
                 break;
+            }
         }
     }
 
     uint8_t len;
     if (uart_read_bytes(FOC_DRIVER_UART_CHANNEL, &len, 1,
-                         pdMS_TO_TICKS(timeout_ms)) != 1)
+                        pdMS_TO_TICKS(timeout_ms)) != 1)
         return false;
-
+        
     if (len < 1)
         return false;
 
@@ -118,13 +127,18 @@ bool foc_uart_receive_reply(foc_uart_cmd_t expected_cmd,
         return false;
 
     if (uart_read_bytes(FOC_DRIVER_UART_CHANNEL, buf, len,
-                         pdMS_TO_TICKS(timeout_ms)) != len)
+                        pdMS_TO_TICKS(timeout_ms)) != len)
         return false;
+
+    ESP_LOGI("FOC", "LEN=%u CMD=%u", len, buf[0]);
+    for (int i = 0; i < len; i++)
+        ESP_LOGI("FOC", "buf[%d]=0x%02X", i, buf[i]);
 
     uint8_t crc_rx;
     if (uart_read_bytes(FOC_DRIVER_UART_CHANNEL, &crc_rx, 1,
-                         pdMS_TO_TICKS(timeout_ms)) != 1)
+                        pdMS_TO_TICKS(timeout_ms)) != 1)
         return false;
+
 
     uint8_t crc_calc;
 
@@ -167,7 +181,7 @@ bool foc_uart_get_all_fast(foc_all_fast_t *out)
     if (!foc_uart_send_cmd(FOC_CMD_GET_ALL_FAST, NULL, 0))
         return false;
 
-    if (!foc_uart_receive_reply(FOC_CMD_GET_ALL_FAST, pl, sizeof(pl), &len, 200))
+    if (!foc_uart_receive_reply(FOC_CMD_GET_ALL_FAST, pl, sizeof(pl), &len, 20))
         return false;
 
     if (len != 12)
@@ -176,6 +190,7 @@ bool foc_uart_get_all_fast(foc_all_fast_t *out)
     memcpy(out, pl, 12);
     return true;
 }
+
 
 bool foc_uart_get_status(foc_status_t *out)
 {
@@ -323,6 +338,8 @@ void foc_uart_test_task(void *arg)
 
     uint8_t pi_result;
 
+    TelemetryData *data = (TelemetryData *)arg;
+
     vTaskDelay(pdMS_TO_TICKS(500));
 
     ESP_LOGI(TAG, "FOC UART test task started");
@@ -330,24 +347,24 @@ void foc_uart_test_task(void *arg)
     while (1)
     {
         /* Always flush before a new request */
-        uart_flush_input(FOC_DRIVER_UART_CHANNEL);
+        // uart_flush_input(FOC_DRIVER_UART_CHANNEL);
 
         /* ---------- STATUS ---------- */
-        if (foc_uart_get_status(&status))
-        {
-            ESP_LOGI(TAG,
-                     "STATUS: state=%u  fault=0x%04X",
-                     status.state,
-                     status.fault_flags);
-        }
-        else
-        {
-            ESP_LOGW(TAG, "GET_STATUS failed");
-        }
+        // if (foc_uart_get_status(&status))
+        // {
+        //     ESP_LOGI(TAG,
+        //              "STATUS: state=%u  fault=0x%04X",
+        //              status.state,
+        //              status.fault_flags);
+        // }
+        // else
+        // {
+        //     ESP_LOGW(TAG, "GET_STATUS failed");
+        // }
 
-        vTaskDelay(pdMS_TO_TICKS(20));
+        // vTaskDelay(pdMS_TO_TICKS(20));
 
-        uart_flush_input(FOC_DRIVER_UART_CHANNEL);
+        // uart_flush_input(FOC_DRIVER_UART_CHANNEL);
 
         /* ---------- FAST TELEMETRY ---------- */
         if (foc_uart_get_all_fast(&fast))
@@ -358,6 +375,12 @@ void foc_uart_test_task(void *arg)
                      (long)fast.ibus_mA,
                      (long)fast.rpm,
                      fast.fault_flags);
+            
+            xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+            data->battery_voltage = fast.vbus_mV / 1000;
+            data->current_amps = fast.ibus_mA / 1000;
+            data->rpms = fast.rpm;
+            xSemaphoreGive(telemetry_mutex);
         }
         else
         {

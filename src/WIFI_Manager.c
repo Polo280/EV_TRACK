@@ -115,7 +115,7 @@ void  post_data(void *pvParameter)
     {
         if(wifi_connected_flag){
             esp_http_client_config_t config = {
-                .url = "http://c17e-200-36-253-105.ngrok-free.app/api/lectures",
+                .url = "http://192.168.68.107:8080/telemetry",
             };
 
             esp_http_client_handle_t client = esp_http_client_init(&config);
