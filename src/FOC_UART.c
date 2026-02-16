@@ -184,10 +184,10 @@ bool foc_uart_get_all_fast(foc_all_fast_t *out)
     if (!foc_uart_receive_reply(FOC_CMD_GET_ALL_FAST, pl, sizeof(pl), &len, 20))
         return false;
 
-    if (len != 12)
+    if (len != 14)
         return false;
 
-    memcpy(out, pl, 12);
+    memcpy(out, pl, 14);
     return true;
 }
 
@@ -369,23 +369,24 @@ void foc_uart_test_task(void *arg)
         /* ---------- FAST TELEMETRY ---------- */
         if (foc_uart_get_all_fast(&fast))
         {
-            ESP_LOGI(TAG,
-                     "FAST: Vbus=%u mV  Ibus=%ld mA  rpm=%ld  fault=0x%04X",
-                     fast.vbus_mV,
-                     (long)fast.ibus_mA,
-                     (long)fast.rpm,
-                     fast.fault_flags);
+            // ESP_LOGI(TAG,
+            //          "FAST: Vbus=%u mV  Ibus=%ld mA  rpm=%ld  fault=0x%04X",
+            //          fast.vbus_mV,
+            //          (long)fast.ibus_mA,
+            //          (long)fast.rpm,
+            //          fast.fault_flags);
             
             xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
-            data->battery_voltage = fast.vbus_mV / 1000;
-            data->current_amps = fast.ibus_mA / 1000;
+            data->battery_voltage = fast.vbus_mV / 1000.0f;
+            data->current_amps = fast.ibus_mA / 1000.0f;
             data->rpms = fast.rpm;
+            data->throttle_raw = fast.throttle_raw;
             xSemaphoreGive(telemetry_mutex);
         }
-        else
-        {
-            ESP_LOGW(TAG, "GET_ALL_FAST failed");
-        }
+        // else
+        // {
+        //     ESP_LOGW(TAG, "GET_ALL_FAST failed");
+        // }
 
         /*
          * Optional test:

@@ -21,7 +21,8 @@ TelemetryData telemetry_data = {
     .ambient_temp    = 0.0f,
     .altitude_m      = 0.0f,
     .num_sats        = 0,
-    .air_speed       = 0.0f
+    .air_speed       = 0.0f,
+    .throttle_raw = 0
 };
 
 SemaphoreHandle_t telemetry_mutex;
@@ -52,6 +53,6 @@ void app_main(void)
 
     // Debugging
     xTaskCreate(status_LED_task, "status_LED", 2048, NULL, 15, NULL);
-    xTaskCreate(telemetry_print_task, "telemetry_print_task", 4096, NULL, 4, NULL);
+    // xTaskCreate(telemetry_print_task, "telemetry_print_task", 4096, NULL, 4, NULL);
 
 }

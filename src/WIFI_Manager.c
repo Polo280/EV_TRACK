@@ -2,11 +2,11 @@
 #include <stdlib.h>
 
 //////// WIFI Settings //////// 
-// const char *ssid = "55 HOME";
-// const char *pass = "bienvenidos55";
+const char *ssid = "55 HOME";
+const char *pass = "bienvenidos55";
 
-const char *ssid = "POCO";
-const char *pass = "12345678";
+// const char *ssid = "POCO";
+// const char *pass = "12345678";
 
 const bool allow_to_reconnect = true;
 bool wifi_connected_flag = false;
@@ -115,7 +115,7 @@ void  post_data(void *pvParameter)
     {
         if(wifi_connected_flag){
             esp_http_client_config_t config = {
-                .url = "http://192.168.68.107:8080/telemetry",
+                .url = "http://192.168.68.113:9090/telemetry",
             };
 
             esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -141,7 +141,7 @@ void  post_data(void *pvParameter)
                 "\"altitude_m\": %.2f, "
                 "\"num_sats\": %d, "
                 "\"air_speed\": %.2f, "
-                "\"steering_angle\": 0.0"
+                "\"throttle_raw\": %d"
                 "}",
                 data->battery_voltage,
                 data->current_amps,
@@ -159,7 +159,8 @@ void  post_data(void *pvParameter)
                 data->ambient_temp,
                 data->altitude_m,
                 data->num_sats,
-                data->air_speed
+                data->air_speed,
+                data->throttle_raw
             );
 
             esp_http_client_set_method(client, HTTP_METHOD_POST);

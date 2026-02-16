@@ -40,6 +40,7 @@ typedef struct __attribute__((packed))
     uint16_t vbus_mV;
     int32_t  ibus_mA;
     int32_t  rpm;
+    uint16_t throttle_raw;
     uint16_t fault_flags;
 } foc_all_fast_t;
 

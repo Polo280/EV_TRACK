@@ -159,7 +159,7 @@ esp_err_t sd_write_csv_header(const char *path)
         "battery_voltage,current_amps,latitude,longitude,"
         "accel_x,accel_y,accel_z,"
         "orient_x,orient_y,orient_z,"
-        "rpms,velocity_x,velocity_y,ambient_temp,altitude_m,num_sats,air_speed";
+        "rpms,velocity_x,velocity_y,ambient_temp,altitude_m,num_sats,air_speed,throttle_raw";
 
     FILE *f = fopen(path, "w");   // "w" creates/overwrites and writes header once
     if (!f) {
@@ -206,7 +206,7 @@ esp_err_t sd_append_telemetry_csv(const char *path, const TelemetryData *data)
         "%.3f,%.3f,%.8lf,%.8lf,"
         "%.3f,%.3f,%.3f,"
         "%.3f,%.3f,%.3f,"
-        "%u,%.3f,%.3f,%.2f,%.2f,%u,%.2f\n",
+        "%u,%.3f,%.3f,%.2f,%.2f,%u,%.2f,%d\n",
         data->battery_voltage,
         data->current_amps,
         data->latitude,
@@ -223,7 +223,8 @@ esp_err_t sd_append_telemetry_csv(const char *path, const TelemetryData *data)
         data->ambient_temp,
         data->altitude_m,
         data->num_sats, 
-        data->air_speed
+        data->air_speed,
+        data->throttle_raw
     );
 
     if (ret < 0) {

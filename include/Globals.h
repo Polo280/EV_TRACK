@@ -86,6 +86,7 @@ typedef struct {
     float altitude_m;
     uint8_t num_sats;
     float air_speed;
+    uint16_t throttle_raw;
 } TelemetryData;
 
 
