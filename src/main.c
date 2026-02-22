@@ -48,7 +48,7 @@ void app_main(void)
     xTaskCreatePinnedToCore(can_tx_task, "can_tx_task", 4096, NULL, 5, NULL, 1);
 
     // Data acquisition 
-    xTaskCreate(post_data, "post_data", 8192, &telemetry_data, 5, NULL);
+    // xTaskCreate(post_data, "post_data", 8192, &telemetry_data, 5, NULL);
     xTaskCreate(SD_manager_task, "SD_manager", 4096, &telemetry_data, 5, NULL);
 
     // Debugging

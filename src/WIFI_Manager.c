@@ -2,11 +2,11 @@
 #include <stdlib.h>
 
 //////// WIFI Settings //////// 
-const char *ssid = "55 HOME";
-const char *pass = "bienvenidos55";
+// const char *ssid = "55 HOME";
+// const char *pass = "bienvenidos55";
 
-// const char *ssid = "POCO";
-// const char *pass = "12345678";
+const char *ssid = "POCO";
+const char *pass = "12345678";
 
 const bool allow_to_reconnect = true;
 bool wifi_connected_flag = false;
@@ -115,7 +115,10 @@ void  post_data(void *pvParameter)
     {
         if(wifi_connected_flag){
             esp_http_client_config_t config = {
-                .url = "http://192.168.68.113:9090/telemetry",
+            .url = "https://joshingly-thermotaxic-trudie.ngrok-free.dev/telemetry",
+            .transport_type = HTTP_TRANSPORT_OVER_SSL,
+            .skip_cert_common_name_check = true,
+            .crt_bundle_attach = esp_crt_bundle_attach,
             };
 
             esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -181,7 +184,3 @@ void  post_data(void *pvParameter)
     }
     vTaskDelete(NULL);
 }
-
-
-//////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////

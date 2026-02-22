@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "esp_wpa2.h"
 #include "Globals.h"
+#include "esp_crt_bundle.h"
 
 ///////// WIFI SETTINGS /////////
 extern const char *ssid;
