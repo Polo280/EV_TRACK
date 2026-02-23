@@ -55,4 +55,19 @@ void app_main(void)
     xTaskCreate(status_LED_task, "status_LED", 2048, NULL, 15, NULL);
     // xTaskCreate(telemetry_print_task, "telemetry_print_task", 4096, NULL, 4, NULL);
 
+
+    /* Create queue (20 pending measurements max) */
+    kf_queue = xQueueCreate(20, sizeof(kf_msg_t));
+
+    /* Create Kalman task */
+    xTaskCreatePinnedToCore(
+        kalman_task,
+        "kalman_task",
+        4096,
+        NULL,
+        10,
+        NULL,
+        0 
+    );
+
 }
