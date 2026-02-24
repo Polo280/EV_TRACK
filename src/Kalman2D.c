@@ -2,13 +2,6 @@
 #include <string.h>
 
 
-/* -------- GLOBAL FILTER INSTANCE -------- */
-static Kalman2D kf;
-
-/* -------- QUEUE -------- */
-QueueHandle_t kf_queue;
-
-
 static void mat_identity(float *A, int n)
 {
     memset(A, 0, n*n*sizeof(float));
@@ -37,46 +30,57 @@ void kf_init(Kalman2D *kf)
 
 void kf_predict(Kalman2D *kf, float dt)
 {
-    float dt2 = dt * dt * 0.5f;
-
+    float dt2 = 0.5f * dt * dt;
     float *X = kf->X;
 
-    /* ---- State prediction ---- */
-    X[0] += X[2]*dt + X[4]*dt2;
-    X[1] += X[3]*dt + X[5]*dt2;
+    // Acceleration as control input 
+    float ax = X[4];
+    float ay = X[5];
 
-    X[2] += X[4]*dt;
-    X[3] += X[5]*dt;
+    /* ---------- STATE PROPAGATION (KINEMATICS) ---------- */
+    // Position 
+    X[0] += X[2]*dt + ax*dt2;
+    X[1] += X[3]*dt + ay*dt2;
 
-    /* ---- Covariance prediction ---- */
+    // Velocity from accel
+    X[2] += ax * dt;
+    X[3] += ay * dt;
+
+
+    /* ---------- COVARIANCE PROPAGATION ---------- */
 
     float A[KF_STATE_DIM][KF_STATE_DIM] = {0};
 
     mat_identity((float*)A, KF_STATE_DIM);
 
+    /* position depends on velocity */
     A[0][2] = dt;
     A[1][3] = dt;
+
+    /* position depends on accel */
     A[0][4] = dt2;
     A[1][5] = dt2;
+
+    /* velocity depends on accel */
     A[2][4] = dt;
     A[3][5] = dt;
 
     float AP[KF_STATE_DIM][KF_STATE_DIM] = {0};
     float APA[KF_STATE_DIM][KF_STATE_DIM] = {0};
 
-    /* AP = A*P */
+    /* AP = A * P */
     for(int i=0;i<6;i++)
         for(int j=0;j<6;j++)
             for(int k=0;k<6;k++)
                 AP[i][j] += A[i][k]*kf->P[k][j];
 
-    /* APA = AP*Aᵀ */
+    /* APA = AP * Aᵀ */
     for(int i=0;i<6;i++)
         for(int j=0;j<6;j++)
             for(int k=0;k<6;k++)
                 APA[i][j] += AP[i][k]*A[j][k];
 
-    /* P = APA + Q */
+    /* Add process noise */
     for(int i=0;i<6;i++)
         for(int j=0;j<6;j++)
             kf->P[i][j] = APA[i][j] + kf->Q[i][j];
@@ -99,9 +103,8 @@ void kf_predict(Kalman2D *kf, float dt)
  *
  * where the measurement matrix H is implicitly defined through the
  * provided state indices (idx0, idx1). This avoids constructing
- * matrices dynamically and reduces computational cost for embedded
- * systems such as the ESP32.
- *
+ * matrices dynamically and reduces computational cost 
+ * 
  * Each measurement is assumed to directly observe one state variable.
  *
  * --------------------------------------------------------------------
@@ -203,8 +206,12 @@ static void kf_update_generic(
     /* Covariance update */
     for(int i=0;i<6;i++)
     {
-        kf->P[i][idx0] *= (1.0f - K[idx0][0]);
-        kf->P[i][idx1] *= (1.0f - K[idx1][1]);
+        for(int j=0;j<6;j++)
+        {
+            kf->P[i][j] -=
+                K[i][0]*kf->P[idx0][j] +
+                K[i][1]*kf->P[idx1][j];
+        }
     }
 }
 
@@ -234,14 +241,15 @@ void kalman_task(void *arg)
 
     while (1)
     {
-        /* 1. Predict at fixed rate */
+        // 1. Predict at fixed rate
         kf_predict(&kf, 0.01f);
 
-        /* 2. Process ALL pending measurements */
+        // 2. Process ALL pending measurements
         kf_msg_t msg;
 
         while (xQueueReceive(kf_queue, &msg, 0) == pdTRUE)
         {
+            // ESP_LOGI("KF", "RX type=%d a=%f b=%f", msg.type, msg.a, msg.b);
             switch(msg.type)
             {
                 case KF_MEAS_ACCEL:
@@ -257,6 +265,12 @@ void kalman_task(void *arg)
                     break;
             }
         }
+
+        // Update telemetry data values 
+        xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+        telemetry_data.velocity_x = kf.X[2];
+        telemetry_data.velocity_y = kf.X[3];
+        xSemaphoreGive(telemetry_mutex);
 
         vTaskDelayUntil(&last, period);
     }

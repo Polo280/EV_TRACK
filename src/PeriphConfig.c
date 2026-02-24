@@ -1,5 +1,6 @@
 #include "PeriphConfig.h"
 #include "bno055.h"
+#include "Kalman2D.h"
 
 // Pinout check - https://lastminuteengineers.com/esp32-wroom-32-pinout-reference/
 
@@ -116,6 +117,9 @@ static void bno055_task(void *arg)
         vTaskDelete(NULL);
     }
 
+    // Message for kalman filter
+    kf_msg_t msg;
+
     while (1)
     {
         bool ok_acc  = false;
@@ -145,9 +149,14 @@ static void bno055_task(void *arg)
             telem->orient_z = euler[2];
         }
 
+        // Update temperature
         telem->ambient_temp = (float)temp;
         xSemaphoreGive(telemetry_mutex);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        // Kalman control input
+        kf.X[4] = acc[0];
+        kf.X[5] = acc[1];
+
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
     vTaskDelete(NULL);
 }
@@ -206,12 +215,11 @@ esp_err_t SPI_Config(){
 }
 
 
-void Peripheral_Config(void *arg){
+void Peripheral_Config(void){
     GPIO_Config();
     UART_Config();
     I2C_Config();
     SPI_Config();
 
     xTaskCreate(bno055_task, "bno055_task", 4096, &telemetry_data, 4, NULL);
-    vTaskDelete(NULL);
 }

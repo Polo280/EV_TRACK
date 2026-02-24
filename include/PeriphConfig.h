@@ -21,4 +21,4 @@ void GPIO_Config();
 void UART_Config();
 void I2C_Config();
 esp_err_t SPI_Config();
-void Peripheral_Config(void *);
+void Peripheral_Config();

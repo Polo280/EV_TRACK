@@ -1,4 +1,5 @@
 #include "WIFI_Manager.h"
+#include "Generic.h"
 #include <stdlib.h>
 
 //////// WIFI Settings //////// 
@@ -125,8 +126,14 @@ void  post_data(void *pvParameter)
 
             char post_data[1024];
 
+            // Take mutex and access telemetry data
+            xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+            // Get timestamp for data
+            data->timestamp = telemetry_timestamp_ms();
+
             snprintf(post_data, sizeof(post_data),
                 "{"
+                "\"timestamp\": %lu, "
                 "\"voltage_battery\": %.2f, "
                 "\"current\": %.2f, "
                 "\"latitude\": %.6f, "
@@ -146,6 +153,7 @@ void  post_data(void *pvParameter)
                 "\"air_speed\": %.2f, "
                 "\"throttle_raw\": %d"
                 "}",
+                data->timestamp,
                 data->battery_voltage,
                 data->current_amps,
                 data->latitude,
@@ -165,6 +173,8 @@ void  post_data(void *pvParameter)
                 data->air_speed,
                 data->throttle_raw
             );
+
+            xSemaphoreGive(telemetry_mutex);
 
             esp_http_client_set_method(client, HTTP_METHOD_POST);
             esp_http_client_set_post_field(client, post_data, strlen(post_data));

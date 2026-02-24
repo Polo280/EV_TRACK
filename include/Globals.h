@@ -65,10 +65,12 @@ extern uint8_t current_status_code;
 extern bool test_mode_enabled;
 extern bool GPS_fix_status; 
 extern volatile bool SD_card_detected; 
+extern bool isRunning;
 
 
 // TELEMETRY DATA TEMPLATE
 typedef struct {
+    uint32_t timestamp;
     float battery_voltage;
     float current_amps;
     double latitude;
@@ -88,6 +90,15 @@ typedef struct {
     float air_speed;
     uint16_t throttle_raw;
 } TelemetryData;
+
+
+// TRACK VARIABLES 
+#define SPEEDWAY_TRACK
+
+#ifdef SPEEDWAY_TRACK
+    #define ORIGIN_LONGITUDE_COORD  -86.238859    // Adjust later
+    #define ORIGIN_LATITUDE_COORD    39.793157
+#endif  
 
 
 // Telemetry Struct to store current Data

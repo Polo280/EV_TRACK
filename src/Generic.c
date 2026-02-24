@@ -25,13 +25,14 @@ void telemetry_print_task(void *arg)
 
     while (1)
     {
-        /* If telemetry_data is written by other tasks/ISRs,
-           you should protect it with a mutex.
-           For now we just read it directly. */
+        xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+        // Get timestamp for data
+        telemetry_data.timestamp = telemetry_timestamp_ms();
 
         ESP_LOGI("TELEM",
                  "\n"
                  "---------------- TELEMETRY ----------------\n"
+                 "Timestamp       : %lu ms\n"
                  "Battery voltage : %.2f V\n"
                  "Current         : %.2f A\n"
                  "Latitude        : %.7f\n"
@@ -50,6 +51,7 @@ void telemetry_print_task(void *arg)
                  "Satellites      : %u\n"
                  "Air speed       : %.2f m/s\n"
                  "-------------------------------------------",
+                 telemetry_data.timestamp,
                  telemetry_data.battery_voltage,
                  telemetry_data.current_amps,
                  telemetry_data.latitude,
@@ -67,7 +69,19 @@ void telemetry_print_task(void *arg)
                  telemetry_data.altitude_m,
                  telemetry_data.num_sats,
                  telemetry_data.air_speed);
-
+        
+        xSemaphoreGive(telemetry_mutex);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+}
+
+
+/*
+ * Returns monotonic timestamp in milliseconds
+ * since ESP32 boot.
+ */
+uint32_t telemetry_timestamp_ms(void)
+{
+    uint64_t us = esp_timer_get_time();  // microseconds
+    return (uint32_t)(us / 1000ULL);
 }

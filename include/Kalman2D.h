@@ -2,7 +2,7 @@
 #define KALMAN2D_H
 
 #include <stdint.h>
-#include "freertos/FreeRTOS.h"
+#include "Globals.h"
 #include "freertos/queue.h"
 
 #define KF_STATE_DIM 6      // State vector dimension
@@ -32,7 +32,9 @@ typedef struct
     float b;
 } kf_msg_t;
 
-/* Queue handle (extern so all tasks can use it) */
+// Kalman filter handle 
+extern Kalman2D kf;
+// Queue handle
 extern QueueHandle_t kf_queue;
 
 void kf_init(Kalman2D *kf);

@@ -1,4 +1,6 @@
 #include "MT3333_GPS.h"
+#include "GPS_local.h"
+#include "Kalman2D.h"
 
 char PMTK_command_buff[256];
 char aux_buff[128];
@@ -472,6 +474,9 @@ bool parse_nmea_sentence(const char *sentence, TelemetryData *out)
     return false;
 }
 
+// Converting to local reference frame (track)
+static gps_origin_t origin;
+
 
 void GPS_parse_task(void *arg)
 {
@@ -481,8 +486,12 @@ void GPS_parse_task(void *arg)
     int idx = 0;
 
     uint8_t ch;
-
     TickType_t last_wake = xTaskGetTickCount();
+
+    // Kalman filter message
+    kf_msg_t msg;
+    // Set the track origin for local reference frame 
+    gps_set_origin(&origin, ORIGIN_LATITUDE_COORD, ORIGIN_LONGITUDE_COORD);
 
     while (1) {
 
@@ -510,13 +519,18 @@ void GPS_parse_task(void *arg)
             }
         }
 
-    //    printf("Longitude: %f, Latitude: %f, Altitude: %f, Number of sats: %d\n", 
-    //    telem->longitude,
-    //    telem->latitude, 
-    //    telem->altitude_m,
-    //    telem->num_sats);
+        /* ------ KALMAN UPDATE ------- */
+        // Convert GPS coordinates to relative coordinate plane
+        float x, y;
+        xSemaphoreTake(telemetry_mutex, portMAX_DELAY);
+        gps_to_local_xy(&origin, telemetry_data.latitude, telemetry_data.longitude, &x, &y);
+        xSemaphoreGive(telemetry_mutex);
 
-        /* run at 1 Hz */
+        msg.type = KF_MEAS_GPS;
+        msg.a = x;
+        msg.b = y;
+        xQueueSendToBack(kf_queue, &msg, 0);
+
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(1000));
     }
 }
